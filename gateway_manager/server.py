@@ -99,7 +99,10 @@ class ApiHandler(BaseHTTPRequestHandler):
                 self._json(HTTPStatus.CREATED, {"port": port})
             elif len(parts) == 4 and parts[:2] == ["api", "ports"]:
                 port_id, action = parts[2], parts[3]
-                if action == "restart":
+                if action == "communication":
+                    result = self.manager.communicate(port_id, self._read_json())
+                    self._json(HTTPStatus.OK, result)
+                elif action == "restart":
                     self.manager.restart_port(port_id)
                     self._json(HTTPStatus.OK, {"ok": True})
                 elif action == "test":

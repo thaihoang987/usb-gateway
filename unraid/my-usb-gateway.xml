@@ -13,9 +13,9 @@
   <ReadMe>https://github.com/thaihoang987/usb-gateway#readme</ReadMe>
   <Overview>[EXPERIMENTAL] Manage multiple Modbus TCP-to-RTU and raw TCP-to-UART gateways from one Web UI.</Overview>
   <Category>Tools:Utilities</Category>
-  <WebUI>http://[IP]:[PORT:8098]</WebUI>
+  <WebUI>http://[IP]:8098/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/thaihoang987/usb-gateway/master/unraid/my-usb-gateway.xml</TemplateURL>
-  <Icon>/mnt/user/App_Custom/Icon_app/usb manager.png</Icon>
+  <Icon>https://raw.githubusercontent.com/thaihoang987/usb-gateway/master/icon.png</Icon>
   <ExtraParams>--restart unless-stopped</ExtraParams>
   <PostArgs/>
   <CPUset/>

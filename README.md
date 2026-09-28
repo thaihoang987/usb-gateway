@@ -45,8 +45,9 @@ settings, and click **Apply**. Unraid will automatically pull
 
 The default Web UI address is `http://UNRAID_IP:8098`.
 
-The template uses this local icon file:
-`/mnt/user/App_Custom/Icon_app/usb manager.png`.
+The template loads `icon.png` from this GitHub repository. Its WebUI shortcut opens port 8098; update the WebUI URL too if you change WEB_PORT.
+
+The Communication tab supports bounded passive UART captures, HEX/UTF-8 sends on Raw gateways, and Modbus FC01–04 reads on either gateway mode. Results show TX/RX bytes and timing; TCP chunks are not decoded Modbus frames. Raw captures can include other clients’ responses.
 
 ## Install with the helper script
 

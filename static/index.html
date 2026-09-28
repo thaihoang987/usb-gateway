@@ -38,6 +38,8 @@
     button.primary:hover { background: var(--accent-hover); }
     button.danger { color: var(--danger); }
     button:disabled { opacity: .5; cursor: not-allowed; }
+    [hidden] { display: none !important; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 14px; }
     .layout { display: grid; grid-template-columns: minmax(280px, 340px) minmax(0, 1fr); gap: 16px; align-items: start; }
     .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
     .panel-title { padding: 12px 14px; border-bottom: 1px solid var(--line); font-weight: 700; }
@@ -108,7 +110,29 @@
       <button type="button" id="refreshBtn">Refresh</button>
       <button type="button" class="primary" id="newBtn">Add gateway</button>
     </div>
-    <div class="layout">
+    <nav class="tabs" aria-label="Gateway views"><button id="gatewaysTab" class="primary">Gateways</button><button id="communicationTab">Communication</button></nav>
+      <section id="communicationPanel" class="panel" hidden>
+        <div class="panel-title">Communication</div>
+        <form id="communicationForm">
+          <div class="field"><label for="commGateway">Gateway / physical USB port</label><select id="commGateway" required></select></div>
+          <p class="hint">Uses the selected gateway's TCP connection. Listening shows bytes received from UART, not other clients' outgoing requests. Replies on Raw gateways may include traffic from other clients.</p>
+          <div class="grid2">
+            <div class="field"><label for="commAction">Action</label><select id="commAction"><option value="listen">Listen (Raw only)</option><option value="modbus">Read Modbus (FC01–04)</option><option value="hex">Send HEX (Raw only)</option><option value="text">Send UTF-8 text (Raw only)</option></select></div>
+            <div class="field"><label for="commDuration">Capture duration (seconds)</label><input id="commDuration" type="number" min="1" max="10" value="2"></div>
+          </div>
+          <div id="commModbus" hidden>
+            <div class="grid2"><div class="field"><label for="commUnit">Unit ID</label><input id="commUnit" type="number" min="1" max="247" value="1"></div><div class="field"><label for="commFunction">Function</label><select id="commFunction"><option value="3">03 Read holding registers</option><option value="4">04 Read input registers</option><option value="1">01 Read coils</option><option value="2">02 Read discrete inputs</option></select></div></div>
+            <div class="grid2"><div class="field"><label for="commAddress">Start address (zero-based)</label><input id="commAddress" type="number" min="0" max="65535" value="0"></div><div class="field"><label for="commQuantity">Quantity</label><input id="commQuantity" type="number" min="1" max="2000" value="1"></div></div>
+          </div>
+          <div id="commSend" class="field" hidden><label for="commData">Data to send</label><textarea id="commData" maxlength="8192" placeholder="HEX: 01 03 00 00 00 01 84 0A"></textarea></div>
+          <p class="hint" id="commSendHint" hidden>Sending shares the live serial bus. Pause other polling clients before a manual test to avoid overlapping requests.</p>
+          <button id="commRun" class="primary" type="submit">Run</button>
+          <button id="commClear" type="button">Clear output</button>
+        </form>
+        <pre id="commOutput" aria-live="polite">Choose a gateway and run a capture or read.</pre>
+      </section>
+
+    <div class="layout" id="gatewaysPanel">
       <section class="panel form-panel">
         <div class="panel-title" id="formTitle">Add gateway</div>
         <form id="portForm">
@@ -238,7 +262,13 @@
       ].join('\n') : (path ? 'Disconnected — saved path: ' + path : 'No USB serial devices found.');
     }
 
+    function renderCommunicationGateways() {
+      const selected = $('commGateway').value;
+      $('commGateway').innerHTML = state.ports.map(p => '<option value="' + escapeHtml(p.id) + '">' + escapeHtml(p.name + ' · TCP ' + p.tcp_port + ' · ' + p.device + (p.device_present === false ? ' · disconnected' : '') + (p.notes ? ' · ' + p.notes : '')) + '</option>').join('');
+      if (state.ports.some(p => p.id === selected)) $('commGateway').value = selected;
+    }
     function renderPorts() {
+      renderCommunicationGateways();
       $('countTotal').textContent = `${state.ports.length} gateway`;
       $('countRunning').textContent = `${state.ports.filter(p => p.runtime.status === 'running').length} running`;
       $('countDevices').textContent = `${state.devices.filter(d => d.present).length} USB`;
@@ -315,6 +345,37 @@
     $('mode').addEventListener('change', modeChanged); $('cancelBtn').addEventListener('click', resetForm);
     $('newBtn').addEventListener('click', resetForm); $('refreshBtn').addEventListener('click', refresh);
     $('closeLogBtn').addEventListener('click', () => $('logDialog').close());
+    function showTab(communication) {
+      $('communicationPanel').hidden = !communication; $('gatewaysPanel').hidden = communication;
+      $('communicationTab').classList.toggle('primary', communication); $('gatewaysTab').classList.toggle('primary', !communication);
+    }
+    $('gatewaysTab').onclick = () => showTab(false);
+    $('communicationTab').onclick = () => showTab(true);
+    $('newBtn').addEventListener('click', () => showTab(false));
+    $('commAction').onchange = () => {
+      const action = $('commAction').value;
+      $('commModbus').hidden = action !== 'modbus'; $('commSend').hidden = !['hex', 'text'].includes(action);
+      $('commSendHint').hidden = action === 'listen';
+    };
+    $('commClear').onclick = () => { $('commOutput').textContent = ''; };
+    $('communicationForm').addEventListener('submit', async event => {
+      event.preventDefault(); const id = $('commGateway').value;
+      if (!id) { toast('Add and select a gateway first', true); return; }
+      const payload = {action: $('commAction').value, duration: Number($('commDuration').value), data: $('commData').value,
+        unit: Number($('commUnit').value), function: Number($('commFunction').value), address: Number($('commAddress').value), quantity: Number($('commQuantity').value)};
+      $('commRun').disabled = true; $('commOutput').textContent = 'Capturing…';
+      try {
+        const result = await api('/api/ports/' + encodeURIComponent(id) + '/communication', {method:'POST', body:JSON.stringify(payload)});
+        const lines = ['Gateway: ' + state.ports.find(p => p.id === id)?.name, 'TX: ' + (result.tx_hex || '(listen only)')];
+        for (const chunk of result.rx) lines.push('RX +' + chunk.ms + ' ms: ' + chunk.hex, 'Text: ' + JSON.stringify(chunk.text));
+        lines.push(result.received_bytes + ' bytes received in ' + result.elapsed_ms + ' ms');
+        if (!result.received_bytes) lines.push('No data received during capture.');
+        if (result.error) lines.push('Error: ' + result.error);
+        if (result.limit_reached) lines.push('Capture stopped at 64 KiB limit.');
+        $('commOutput').textContent = lines.join('\n');
+      } catch(e) { $('commOutput').textContent = 'Error: ' + e.message; }
+      finally { $('commRun').disabled = false; }
+    });
     resetForm(); refresh(); setInterval(refresh, 4000);
   </script>
 </body>

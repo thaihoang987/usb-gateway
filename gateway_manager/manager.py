@@ -9,6 +9,7 @@ from typing import Any
 
 from .config import ConfigError, ConfigStore, normalize_port, validate_ports
 from .devices import scan_devices
+from .communication import exchange
 from .workers import GatewayWorker, create_worker
 
 
@@ -104,6 +105,14 @@ class GatewayManager:
             if not worker:
                 raise ConfigError("worker is not available")
             worker.restart()
+
+    def communicate(self, port_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        with self.lock:
+            port = copy.deepcopy(self.get_port(port_id))
+            worker = self.workers.get(port_id)
+            if not port["enabled"] or not worker or worker.snapshot()["status"] != "running":
+                raise ConfigError("Gateway must be enabled and running")
+        return exchange(port, payload)
 
     def test_port(self, port_id: str) -> dict[str, Any]:
         with self.lock:
