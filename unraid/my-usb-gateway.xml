@@ -19,8 +19,8 @@
   <ExtraParams>--restart unless-stopped</ExtraParams>
   <PostArgs/>
   <CPUset/>
-  <DonateText/>
-  <DonateLink/>
+  <DonateText>Buy me a beer</DonateText>
+  <DonateLink>https://buymeacoffee.com/leon_bell</DonateLink>
   <Requires/>
   <Config Name="Appdata" Target="/config" Default="/mnt/user/appdata/usb-gateway" Mode="rw" Description="Cau hinh gateway luu ben vung" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/usb-gateway</Config>
   <Config Name="Thu muc Serial" Target="/dev/serial" Default="/dev/serial" Mode="ro" Description="Symlink by-id va by-path cua USB serial" Type="Path" Display="always" Required="true" Mask="false">/dev/serial</Config>
