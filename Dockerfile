@@ -14,7 +14,7 @@ RUN apk add --no-cache alpine-sdk bash cmake git linux-headers && \
 FROM alpine:3.22
 
 LABEL org.opencontainers.image.title="USB Gateway" \
-      org.opencontainers.image.description="Multi-port Modbus TCP/RTU and raw TCP/UART gateway for Unraid" \
+      org.opencontainers.image.description="Experimental multi-port Modbus TCP/RTU and raw TCP/UART gateway for Unraid" \
       org.opencontainers.image.authors="thaihoang987" \
       org.opencontainers.image.source="https://github.com/thaihoang987/usb-gateway" \
       org.opencontainers.image.documentation="https://github.com/thaihoang987/usb-gateway#readme"

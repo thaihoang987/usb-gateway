@@ -1,25 +1,33 @@
 # USB Gateway
 
+> [!WARNING]
+> **Experimental software.** Test each USB device and TCP client carefully
+> before relying on USB Gateway for production workloads.
+
 <a href="https://buymeacoffee.com/leon_bell" target="_blank"><img src="https://img.buymeacoffee.com/button-api/?text=Buy%20me%20a%20beer&emoji=%F0%9F%8D%BA&slug=leon_bell&button_colour=FFDD00&font_colour=000000&font_family=Cookie&outline_colour=000000&coffee_colour=ffffff" alt="Buy me a beer" height="50"></a>
 <a href="https://ko-fi.com/leonbell" target="_blank"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support me on Ko-fi" height="50"></a>
 <a href="https://paypal.me/leonbell95" target="_blank"><img src="https://img.shields.io/badge/PayPal-Donate-00457C?style=for-the-badge&logo=paypal&logoColor=white" alt="Donate with PayPal" height="50"></a>
 
 🍺 [Buy me a beer](https://buymeacoffee.com/leon_bell) · ☕ [Ko-fi](https://ko-fi.com/leonbell) · 💙 [PayPal](https://paypal.me/leonbell95)
 
-USB Gateway la Docker app cho Unraid, quan ly nhieu cong USB serial tu mot
-Web UI:
+USB Gateway is a standalone Unraid Docker app for managing multiple USB
+serial gateways from one Web UI:
 
-- Modbus TCP sang Modbus RTU bang mot tien trinh `mbusd` cho moi USB.
-- Raw TCP sang UART cho Arduino, JSON/text va giao thuc binary rieng.
-- Quet `/dev/serial/by-id` va `/dev/serial/by-path`.
-- Luu cau hinh tai `/mnt/user/appdata/usb-gateway/config.json`.
-- Tu khoi dong lai gateway sau khi Docker hoac Unraid khoi dong.
+- Modbus TCP to Modbus RTU through one `mbusd` process per USB device.
+- Raw TCP to UART for Arduino, text, JSON, and custom binary protocols.
+- Discovery through `/dev/serial/by-id` and `/dev/serial/by-path`.
+- Persistent configuration at `/mnt/user/appdata/usb-gateway/config.json`.
+- Automatic gateway recovery after Docker or Unraid restarts.
 
-Tac gia: [thaihoang987](https://github.com/thaihoang987)
+USB Gateway does not modify the existing `mbusd-gateway` container or replace
+another USB management service. Do not enable the same USB device in multiple
+services at the same time.
 
-## Cai tren Unraid bang template
+Author: [thaihoang987](https://github.com/thaihoang987)
 
-Chay mot lan trong Unraid Terminal:
+## Install on Unraid with the template
+
+Run this once in the Unraid terminal:
 
 ```bash
 mkdir -p /boot/config/plugins/dockerMan/templates-user
@@ -27,16 +35,16 @@ wget -O /boot/config/plugins/dockerMan/templates-user/my-usb-gateway.xml \
   https://raw.githubusercontent.com/thaihoang987/usb-gateway/master/unraid/my-usb-gateway.xml
 ```
 
-Sau do vao **Docker -> Add Container**, chon template `usb-gateway`, kiem tra
-cac gia tri va bam **Apply**. Image
-`ghcr.io/thaihoang987/usb-gateway:latest` se duoc tu dong tai ve.
+Open **Docker -> Add Container**, select the `usb-gateway` template, review the
+settings, and click **Apply**. Unraid will automatically pull
+`ghcr.io/thaihoang987/usb-gateway:latest`.
 
-Web UI mac dinh: `http://IP_UNRAID:8098`.
+The default Web UI address is `http://UNRAID_IP:8098`.
 
-Icon cua template dung file:
+The template uses this local icon file:
 `/mnt/user/App_Custom/Icon_app/usb manager.png`.
 
-## Cai bang script
+## Install with the helper script
 
 ```bash
 git clone https://github.com/thaihoang987/usb-gateway.git /tmp/usb-gateway
@@ -44,16 +52,17 @@ cd /tmp/usb-gateway
 sh install-unraid.sh
 ```
 
-Script tai image, tao thu muc appdata va cai template DockerMan. Script khong
-dung, xoa hoac sua container gateway hien co.
+The script pulls the image, creates the appdata directory, and installs the
+DockerMan template. It does not stop, delete, or modify an existing gateway
+container.
 
-Neu muon build image truc tiep tren Unraid:
+To build the image directly on Unraid instead:
 
 ```bash
 BUILD_LOCAL=1 IMAGE_NAME=ghcr.io/thaihoang987/usb-gateway:latest sh install-unraid.sh
 ```
 
-## Chay truc tiep
+## Run directly
 
 ```bash
 docker run -d \
@@ -68,23 +77,26 @@ docker run -d \
   ghcr.io/thaihoang987/usb-gateway:latest
 ```
 
-## Su dung an toan
+## Safe migration
 
-Khong bat cung mot USB trong hai container hoac dich vu cung luc. Khi chuyen
-tu gateway cu, hay tao gateway moi tren mot USB chua duoc su dung, test TCP tu
-Web UI, sau do moi dung dich vu cu tuong ung.
+1. Install USB Gateway without adding or enabling any gateways.
+2. Add one USB device that is not used by another process.
+3. Test the TCP listener in the Web UI.
+4. Connect Node-RED or another client to the Unraid IP and selected TCP port.
+5. Stop the old gateway only after the new connection is verified.
 
-Khong dung TCP port `8888` neu `mbusd-gateway` hien tai van dang nghe port do.
-Co the thu bang `8890`, `8891`, ... truoc.
+Do not use TCP port `8888` while an existing `mbusd-gateway` still listens on
+that port. Use a temporary port such as `8890` or `8891` during testing.
 
-Raw mode truyen byte nguyen ban va khong phan tich noi dung. DTR va RTS mac
-dinh tat de han che Arduino tu reset khi cong serial duoc mo.
+Raw mode transfers bytes unchanged and does not parse messages, delimiters, or
+checksums. DTR and RTS are disabled by default to reduce unwanted Arduino
+resets when the serial port is opened.
 
-## Phat trien
+## Development
 
 ```bash
 docker compose up --build
 python -m unittest discover -s tests -v
 ```
 
-Chi tiet thiet ke nam trong [ARCHITECTURE.md](ARCHITECTURE.md).
+See [ARCHITECTURE.md](ARCHITECTURE.md) for implementation details.

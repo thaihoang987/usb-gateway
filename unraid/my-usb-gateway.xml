@@ -11,7 +11,7 @@
   <Support>https://github.com/thaihoang987/usb-gateway/issues</Support>
   <Project>https://github.com/thaihoang987/usb-gateway</Project>
   <ReadMe>https://github.com/thaihoang987/usb-gateway#readme</ReadMe>
-  <Overview>USB Gateway quan ly nhieu Modbus TCP to RTU va Raw TCP to UART tu mot Web UI.</Overview>
+  <Overview>[EXPERIMENTAL] Manage multiple Modbus TCP-to-RTU and raw TCP-to-UART gateways from one Web UI.</Overview>
   <Category>Tools:Utilities</Category>
   <WebUI>http://[IP]:[PORT:8098]</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/thaihoang987/usb-gateway/master/unraid/my-usb-gateway.xml</TemplateURL>
@@ -21,10 +21,10 @@
   <CPUset/>
   <DonateText>Buy me a beer</DonateText>
   <DonateLink>https://buymeacoffee.com/leon_bell</DonateLink>
-  <Requires/>
-  <Config Name="Appdata" Target="/config" Default="/mnt/user/appdata/usb-gateway" Mode="rw" Description="Cau hinh gateway luu ben vung" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/usb-gateway</Config>
-  <Config Name="Thu muc Serial" Target="/dev/serial" Default="/dev/serial" Mode="ro" Description="Symlink by-id va by-path cua USB serial" Type="Path" Display="always" Required="true" Mask="false">/dev/serial</Config>
-  <Config Name="Web UI Port" Target="WEB_PORT" Default="8098" Mode="" Description="Cong giao dien quan ly; app dung host network" Type="Variable" Display="always" Required="true" Mask="false">8098</Config>
-  <Config Name="Config Path" Target="CONFIG_PATH" Default="/config/config.json" Mode="" Description="File cau hinh ben trong container" Type="Variable" Display="advanced" Required="true" Mask="false">/config/config.json</Config>
+  <Requires>Experimental software. Test with non-critical devices before production use.</Requires>
+  <Config Name="Appdata" Target="/config" Default="/mnt/user/appdata/usb-gateway" Mode="rw" Description="Persistent gateway configuration" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/usb-gateway</Config>
+  <Config Name="Serial Directory" Target="/dev/serial" Default="/dev/serial" Mode="ro" Description="USB serial symlinks from by-id and by-path" Type="Path" Display="always" Required="true" Mask="false">/dev/serial</Config>
+  <Config Name="Web UI Port" Target="WEB_PORT" Default="8098" Mode="" Description="Management Web UI port; the app uses host networking" Type="Variable" Display="always" Required="true" Mask="false">8098</Config>
+  <Config Name="Config Path" Target="CONFIG_PATH" Default="/config/config.json" Mode="" Description="Configuration file inside the container" Type="Variable" Display="advanced" Required="true" Mask="false">/config/config.json</Config>
   <TailscaleStateDir/>
 </Container>

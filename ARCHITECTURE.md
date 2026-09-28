@@ -1,5 +1,10 @@
 # USB Gateway architecture
 
+## Project status
+
+USB Gateway is experimental software. Test each serial device and TCP client
+carefully before relying on it for production workloads.
+
 ## Goal
 
 Run a separate Unraid Docker app named `usb-gateway`. It does not replace or

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="vi">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -27,6 +27,7 @@
     header { background: #17212b; color: #fff; border-bottom: 3px solid var(--accent); }
     .topbar { max-width: 1440px; margin: auto; padding: 14px 20px; display: flex; align-items: center; gap: 16px; }
     .brand { font-size: 19px; font-weight: 700; }
+    .stage { color: #ffd166; font-size: 11px; font-weight: 700; text-transform: uppercase; }
     .summary { margin-left: auto; display: flex; gap: 18px; color: #cbd5df; font-size: 13px; }
     main { max-width: 1440px; margin: 0 auto; padding: 18px 20px 36px; }
     .toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
@@ -86,40 +87,41 @@
   <header>
     <div class="topbar">
       <div class="brand">USB Gateway</div>
+      <div class="stage">Experimental</div>
       <div class="summary">
         <span id="countTotal">0 gateway</span>
-        <span id="countRunning">0 đang chạy</span>
+        <span id="countRunning">0 running</span>
         <span id="countDevices">0 USB</span>
       </div>
     </div>
   </header>
   <main>
     <div class="toolbar">
-      <h1>Gateway TCP và UART</h1>
-      <button type="button" id="refreshBtn">Làm mới</button>
-      <button type="button" class="primary" id="newBtn">Thêm gateway</button>
+      <h1>TCP and UART gateways</h1>
+      <button type="button" id="refreshBtn">Refresh</button>
+      <button type="button" class="primary" id="newBtn">Add gateway</button>
     </div>
     <div class="layout">
       <section class="panel form-panel">
-        <div class="panel-title" id="formTitle">Thêm gateway</div>
+        <div class="panel-title" id="formTitle">Add gateway</div>
         <form id="portForm">
           <input type="hidden" id="portId">
           <div class="field">
-            <label for="name">Tên định danh</label>
-            <input id="name" required maxlength="64" placeholder="arduino-gieng-troi">
+            <label for="name">Gateway name</label>
+            <input id="name" required maxlength="64" placeholder="arduino-controller">
           </div>
           <div class="field">
-            <label for="mode">Giao thức</label>
+            <label for="mode">Protocol</label>
             <select id="mode">
               <option value="raw">Raw TCP ↔ UART</option>
               <option value="modbus">Modbus TCP → RTU (mbusd)</option>
             </select>
           </div>
           <div class="field">
-            <label for="device">Thiết bị USB</label>
+            <label for="device">USB device</label>
             <select id="device" required></select>
           </div>
-          <div class="hint" id="deviceHint">Ưu tiên đường dẫn by-id hoặc by-path ổn định.</div>
+          <div class="hint" id="deviceHint">Use a stable by-id or by-path device whenever possible.</div>
           <div class="grid2">
             <div class="field"><label for="tcpPort">TCP port</label><input id="tcpPort" type="number" min="1" max="65535" required value="8888"></div>
             <div class="field"><label for="baud">Baud rate</label><input id="baud" type="number" min="300" max="4000000" required value="9600"></div>
@@ -139,37 +141,37 @@
               <label for="stopBits">Stop bits</label>
               <select id="stopBits"><option value="1">1</option><option value="2">2</option></select>
             </div>
-            <div class="field modbus-only"><label for="logLevel">Mức log mbusd</label><input id="logLevel" type="number" min="0" max="9" value="2"></div>
+            <div class="field modbus-only"><label for="logLevel">mbusd log level</label><input id="logLevel" type="number" min="0" max="9" value="2"></div>
           </div>
           <div class="grid2 modbus-only">
             <div class="field"><label for="pauseMs">Queue delay (ms)</label><input id="pauseMs" type="number" min="1" value="100"></div>
             <div class="field"><label for="waitMs">Response wait (ms)</label><input id="waitMs" type="number" min="1" value="500"></div>
           </div>
           <div class="checks">
-            <label><input id="enabled" type="checkbox" checked> Bật gateway</label>
+            <label><input id="enabled" type="checkbox" checked> Enable gateway</label>
             <label class="raw-only"><input id="dtr" type="checkbox"> DTR</label>
             <label class="raw-only"><input id="rts" type="checkbox"> RTS</label>
           </div>
           <div class="form-actions">
-            <button type="button" id="cancelBtn">Đặt lại</button>
-            <button type="submit" class="primary">Lưu gateway</button>
+            <button type="button" id="cancelBtn">Reset</button>
+            <button type="submit" class="primary">Save gateway</button>
           </div>
         </form>
       </section>
       <section class="panel">
-        <div class="panel-title">Danh sách gateway</div>
+        <div class="panel-title">Gateway list</div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Tên</th><th>Chế độ</th><th>TCP</th><th>Trạng thái</th><th>Client</th><th>Thao tác</th></tr></thead>
+            <thead><tr><th>Name</th><th>Mode</th><th>TCP</th><th>Status</th><th>Clients</th><th>Actions</th></tr></thead>
             <tbody id="portRows"></tbody>
           </table>
-          <div class="empty" id="emptyState">Chưa có gateway. Chọn USB và thêm gateway đầu tiên.</div>
+          <div class="empty" id="emptyState">No gateways configured. Select a USB device and add the first gateway.</div>
         </div>
       </section>
     </div>
   </main>
   <dialog id="logDialog">
-    <div class="dialog-head"><strong id="logTitle">Log</strong><button type="button" id="closeLogBtn">Đóng</button></div>
+    <div class="dialog-head"><strong id="logTitle">Log</strong><button type="button" id="closeLogBtn">Close</button></div>
     <pre id="logContent"></pre>
   </dialog>
   <div class="toast" id="toast"></div>
@@ -203,13 +205,13 @@
         choices.unshift({path: selected, real_path: selected, present: false, claimed_by: null});
       }
       $('device').innerHTML = choices.length
-        ? choices.map(d => `<option value="${escapeHtml(d.path)}" ${d.path === selected ? 'selected' : ''}>${escapeHtml(d.path)}${d.claimed_by ? ` — đang dùng: ${escapeHtml(d.claimed_by)}` : ''}${d.present ? '' : ' — chưa cắm'}</option>`).join('')
-        : '<option value="">Không tìm thấy USB serial</option>';
+        ? choices.map(d => `<option value="${escapeHtml(d.path)}" ${d.path === selected ? 'selected' : ''}>${escapeHtml(d.path)}${d.claimed_by ? ` — in use by: ${escapeHtml(d.claimed_by)}` : ''}${d.present ? '' : ' — disconnected'}</option>`).join('')
+        : '<option value="">No USB serial devices found</option>';
     }
 
     function renderPorts() {
       $('countTotal').textContent = `${state.ports.length} gateway`;
-      $('countRunning').textContent = `${state.ports.filter(p => p.runtime.status === 'running').length} đang chạy`;
+      $('countRunning').textContent = `${state.ports.filter(p => p.runtime.status === 'running').length} running`;
       $('countDevices').textContent = `${state.devices.filter(d => d.present).length} USB`;
       $('emptyState').style.display = state.ports.length ? 'none' : 'block';
       $('portRows').innerHTML = state.ports.map(p => {
@@ -222,18 +224,18 @@
           <td><span class="badge ${escapeHtml(rt.status)}">${escapeHtml(rt.status)}</span><div class="sub" title="${escapeHtml(rt.message)}">${escapeHtml(rt.message)}</div></td>
           <td>${rt.client_count ?? 0}</td>
           <td><div class="actions">
-            <button onclick="editPort('${p.id}')">Sửa</button>
+            <button onclick="editPort('${p.id}')">Edit</button>
             <button onclick="testPort('${p.id}')">Test</button>
             <button onclick="restartPort('${p.id}')" ${p.enabled ? '' : 'disabled'}>Restart</button>
             <button onclick="showLogs('${p.id}')">Log</button>
-            <button class="danger" onclick="deletePort('${p.id}')">Xoá</button>
+            <button class="danger" onclick="deletePort('${p.id}')">Delete</button>
           </div></td>
         </tr>`;
       }).join('');
     }
 
     function resetForm() {
-      state.editing = null; $('portId').value = ''; $('formTitle').textContent = 'Thêm gateway';
+      state.editing = null; $('portId').value = ''; $('formTitle').textContent = 'Add gateway';
       $('portForm').reset(); $('enabled').checked = true; $('tcpPort').value = '8888'; $('baud').value = '9600';
       $('dataBits').value = '8'; $('parity').value = 'N'; $('stopBits').value = '1'; $('logLevel').value = '2';
       $('pauseMs').value = '100'; $('waitMs').value = '500'; renderDevices(''); modeChanged();
@@ -241,24 +243,24 @@
 
     window.editPort = id => {
       const p = state.ports.find(item => item.id === id); if (!p) return;
-      state.editing = id; $('formTitle').textContent = `Sửa ${p.name}`; $('portId').value = id; $('name').value = p.name;
+      state.editing = id; $('formTitle').textContent = `Edit ${p.name}`; $('portId').value = id; $('name').value = p.name;
       $('mode').value = p.mode; renderDevices(p.device); $('tcpPort').value = p.tcp_port; $('baud').value = p.baud;
       $('dataBits').value = p.data_bits; $('parity').value = p.parity; $('stopBits').value = p.stop_bits;
       $('enabled').checked = p.enabled; $('dtr').checked = p.dtr; $('rts').checked = p.rts; $('logLevel').value = p.log_level;
       $('pauseMs').value = p.pause_ms; $('waitMs').value = p.wait_ms; modeChanged(); window.scrollTo({top: 0, behavior: 'smooth'});
     };
 
-    window.testPort = async id => { try { const r = await api(`/api/ports/${id}/test`, {method:'POST'}); toast(r.ok ? `TCP :${r.tcp_port} hoạt động (${r.latency_ms} ms)` : `Test thất bại: ${r.error}`, !r.ok); } catch (e) { toast(e.message, true); } };
-    window.restartPort = async id => { try { await api(`/api/ports/${id}/restart`, {method:'POST'}); toast('Đã restart gateway'); setTimeout(refresh, 500); } catch (e) { toast(e.message, true); } };
-    window.deletePort = async id => { const p = state.ports.find(x => x.id === id); if (!p || !confirm(`Xoá gateway ${p.name}?`)) return; try { await api(`/api/ports/${id}`, {method:'DELETE'}); resetForm(); await refresh(); toast('Đã xoá gateway'); } catch (e) { toast(e.message, true); } };
-    window.showLogs = async id => { const p = state.ports.find(x => x.id === id); try { const data = await api(`/api/ports/${id}/logs?limit=300`); $('logTitle').textContent = `Log — ${p?.name || id}`; $('logContent').textContent = data.logs.map(x => `${x.time} [${x.level}] ${x.message}`).join('\n') || 'Chưa có log.'; $('logDialog').showModal(); } catch (e) { toast(e.message, true); } };
+    window.testPort = async id => { try { const r = await api(`/api/ports/${id}/test`, {method:'POST'}); toast(r.ok ? `TCP :${r.tcp_port} is responding (${r.latency_ms} ms)` : `Test failed: ${r.error}`, !r.ok); } catch (e) { toast(e.message, true); } };
+    window.restartPort = async id => { try { await api(`/api/ports/${id}/restart`, {method:'POST'}); toast('Gateway restarted'); setTimeout(refresh, 500); } catch (e) { toast(e.message, true); } };
+    window.deletePort = async id => { const p = state.ports.find(x => x.id === id); if (!p || !confirm(`Delete gateway ${p.name}?`)) return; try { await api(`/api/ports/${id}`, {method:'DELETE'}); resetForm(); await refresh(); toast('Gateway deleted'); } catch (e) { toast(e.message, true); } };
+    window.showLogs = async id => { const p = state.ports.find(x => x.id === id); try { const data = await api(`/api/ports/${id}/logs?limit=300`); $('logTitle').textContent = `Log — ${p?.name || id}`; $('logContent').textContent = data.logs.map(x => `${x.time} [${x.level}] ${x.message}`).join('\n') || 'No logs available.'; $('logDialog').showModal(); } catch (e) { toast(e.message, true); } };
 
     async function refresh() {
       try {
         const [ports, devices] = await Promise.all([api('/api/ports'), api('/api/devices')]);
         state.ports = ports.ports; state.devices = devices.devices; renderPorts();
         renderDevices(state.editing ? state.ports.find(p => p.id === state.editing)?.device : $('device').value);
-      } catch (e) { toast(`Không tải được trạng thái: ${e.message}`, true); }
+      } catch (e) { toast(`Unable to load status: ${e.message}`, true); }
     }
 
     $('portForm').addEventListener('submit', async event => {
@@ -272,7 +274,7 @@
       };
       try {
         const id = state.editing; await api(id ? `/api/ports/${id}` : '/api/ports', {method: id ? 'PUT' : 'POST', body: JSON.stringify(payload)});
-        toast(id ? 'Đã cập nhật gateway' : 'Đã thêm gateway'); resetForm(); await refresh();
+        toast(id ? 'Gateway updated' : 'Gateway added'); resetForm(); await refresh();
       } catch (e) { toast(e.message, true); }
     });
     $('mode').addEventListener('change', modeChanged); $('cancelBtn').addEventListener('click', resetForm);
