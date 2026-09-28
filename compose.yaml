@@ -1,0 +1,14 @@
+services:
+  usb-gateway:
+    build: .
+    image: ghcr.io/thaihoang987/usb-gateway:latest
+    container_name: usb-gateway
+    network_mode: host
+    privileged: true
+    restart: unless-stopped
+    environment:
+      WEB_PORT: "8098"
+      CONFIG_PATH: /config/config.json
+    volumes:
+      - /mnt/user/appdata/usb-gateway:/config
+      - /dev/serial:/dev/serial:ro
