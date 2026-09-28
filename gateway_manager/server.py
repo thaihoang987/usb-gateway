@@ -79,6 +79,8 @@ class ApiHandler(BaseHTTPRequestHandler):
                 self._json(HTTPStatus.OK, {"ok": True})
             elif parts == ["api", "ports"]:
                 self._json(HTTPStatus.OK, {"ports": self.manager.list_ports()})
+            elif parts == ["api", "presets"]:
+                self._json(HTTPStatus.OK, {"presets": self.manager.presets.list()})
             elif parts == ["api", "devices"]:
                 self._json(HTTPStatus.OK, {"devices": self.manager.devices()})
             elif len(parts) == 4 and parts[:2] == ["api", "ports"] and parts[3] == "logs":
@@ -94,7 +96,9 @@ class ApiHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         try:
             parts = self._parts()
-            if parts == ["api", "ports"]:
+            if parts == ["api", "presets"]:
+                self._json(HTTPStatus.OK, {"preset": self.manager.presets.save(self._read_json())})
+            elif parts == ["api", "ports"]:
                 port = self.manager.add_port(self._read_json())
                 self._json(HTTPStatus.CREATED, {"port": port})
             elif len(parts) == 4 and parts[:2] == ["api", "ports"]:
@@ -129,6 +133,10 @@ class ApiHandler(BaseHTTPRequestHandler):
     def do_DELETE(self) -> None:
         try:
             parts = self._parts()
+            if len(parts) == 3 and parts[:2] == ["api", "presets"]:
+                self.manager.presets.delete(parts[2])
+                self._json(HTTPStatus.OK, {"ok": True})
+                return
             if len(parts) == 3 and parts[:2] == ["api", "ports"]:
                 self.manager.delete_port(parts[2])
                 self._json(HTTPStatus.OK, {"ok": True})

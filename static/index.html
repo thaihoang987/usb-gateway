@@ -114,16 +114,20 @@
       <section id="communicationPanel" class="panel" hidden>
         <div class="panel-title">Communication</div>
         <form id="communicationForm">
+          <div class="field"><label for="commPreset">Saved command templates</label><select id="commPreset"><option value="">Select template</option></select></div>
+          <div class="field"><label for="commPresetName">Template name</label><input id="commPresetName" maxlength="100" placeholder="PZEM — set address to 5"></div>
+          <div class="toolbar"><button type="button" id="commLoadPreset">Load</button><button type="button" id="commSavePreset">Save new</button><button type="button" id="commUpdatePreset">Update selected</button><button type="button" id="commDeletePreset">Delete</button></div>
           <div class="field"><label for="commGateway">Gateway / physical USB port</label><select id="commGateway" required></select></div>
           <p class="hint">Uses the selected gateway's TCP connection. Listening shows bytes received from UART, not other clients' outgoing requests. Replies on Raw gateways may include traffic from other clients.</p>
           <div class="grid2">
-            <div class="field"><label for="commAction">Action</label><select id="commAction"><option value="listen">Listen (Raw only)</option><option value="modbus">Read Modbus (FC01–04)</option><option value="hex">Send HEX (Raw only)</option><option value="text">Send UTF-8 text (Raw only)</option></select></div>
+            <div class="field"><label for="commAction">Action</label><select id="commAction"><option value="listen">Listen (Raw only)</option><option value="modbus">Modbus command (custom function)</option><option value="hex">Send HEX (Raw only)</option><option value="text">Send UTF-8 text (Raw only)</option></select></div>
             <div class="field"><label for="commDuration">Capture duration (seconds)</label><input id="commDuration" type="number" min="1" max="10" value="2"></div>
           </div>
           <div id="commModbus" hidden>
-            <div class="grid2"><div class="field"><label for="commUnit">Unit ID</label><input id="commUnit" type="number" min="1" max="247" value="1"></div><div class="field"><label for="commFunction">Function</label><select id="commFunction"><option value="3">03 Read holding registers</option><option value="4">04 Read input registers</option><option value="1">01 Read coils</option><option value="2">02 Read discrete inputs</option></select></div></div>
+            <div class="grid2"><div class="field"><label for="commUnit">Unit ID</label><input id="commUnit" type="number" min="1" max="247" value="1"></div><div class="field"><label for="commFunction">Function</label><input id="commFunction" type="number" min="1" max="127" value="3" list="functionHints"><datalist id="functionHints"><option value="3">Read holding</option><option value="4">Read input</option><option value="5">Write coil</option><option value="6">Write register</option><option value="15">Write coils</option><option value="16">Write registers</option><option value="66">PZEM reset energy (0x42)</option></datalist></div></div>
             <div class="grid2"><div class="field"><label for="commAddress">Start address (zero-based)</label><input id="commAddress" type="number" min="0" max="65535" value="0"></div><div class="field"><label for="commQuantity">Quantity</label><input id="commQuantity" type="number" min="1" max="2000" value="1"></div></div>
           </div>
+          <div id="commExtra" hidden><div class="field"><label for="commValue">Write value (decimal, FC05/06)</label><input id="commValue" type="number" min="0" max="65535" value="0"></div><label><input id="commCustom" type="checkbox" style="width:auto;height:auto"> Custom function data (HEX)</label><textarea id="commBody" placeholder="Bytes AFTER function code; omit unit ID, CRC and MBAP. Example FC06: 00 02 00 05"></textarea><p class="hint">Function is decimal (6 = 0x06, 66 = 0x42). FC01–04 use address/quantity; FC05/06 use address/value. Other functions use HEX data. Custom mode overrides address, quantity and value; CRC/MBAP is added automatically.</p></div>
           <div id="commSend" class="field" hidden><label for="commData">Data to send</label><textarea id="commData" maxlength="8192" placeholder="HEX: 01 03 00 00 00 01 84 0A"></textarea></div>
           <p class="hint" id="commSendHint" hidden>Sending shares the live serial bus. Pause other polling clients before a manual test to avoid overlapping requests.</p>
           <button id="commRun" class="primary" type="submit">Run</button>
@@ -354,7 +358,7 @@
     $('newBtn').addEventListener('click', () => showTab(false));
     $('commAction').onchange = () => {
       const action = $('commAction').value;
-      $('commModbus').hidden = action !== 'modbus'; $('commSend').hidden = !['hex', 'text'].includes(action);
+      $('commModbus').hidden = action !== 'modbus'; $('commExtra').hidden = action !== 'modbus'; $('commSend').hidden = !['hex', 'text'].includes(action);
       $('commSendHint').hidden = action === 'listen';
     };
     $('commClear').onclick = () => { $('commOutput').textContent = ''; };
@@ -362,7 +366,7 @@
       event.preventDefault(); const id = $('commGateway').value;
       if (!id) { toast('Add and select a gateway first', true); return; }
       const payload = {action: $('commAction').value, duration: Number($('commDuration').value), data: $('commData').value,
-        unit: Number($('commUnit').value), function: Number($('commFunction').value), address: Number($('commAddress').value), quantity: Number($('commQuantity').value)};
+        unit: Number($('commUnit').value), function: Number($('commFunction').value), address: Number($('commAddress').value), quantity: Number($('commQuantity').value), value: Number($('commValue').value), body: $('commBody').value, custom_body: $('commCustom').checked};
       $('commRun').disabled = true; $('commOutput').textContent = 'Capturing…';
       try {
         const result = await api('/api/ports/' + encodeURIComponent(id) + '/communication', {method:'POST', body:JSON.stringify(payload)});
@@ -376,6 +380,34 @@
       } catch(e) { $('commOutput').textContent = 'Error: ' + e.message; }
       finally { $('commRun').disabled = false; }
     });
+    const presetFields = ['commGateway','commAction','commDuration','commData','commUnit','commFunction','commAddress','commQuantity','commValue','commBody'];
+    let commandPresets = [];
+    async function loadPresets(selected = '') {
+      commandPresets = (await api('/api/presets')).presets;
+      $('commPreset').innerHTML = '<option value="">Select template</option>' + commandPresets.map(p => '<option value="' + escapeHtml(p.id) + '">' + escapeHtml(p.name) + '</option>').join('');
+      $('commPreset').value = selected;
+    }
+    async function savePreset(update) {
+      try {
+        if (update && !$('commPreset').value) throw Error('Select a template to update');
+        const form = Object.fromEntries(presetFields.map(id => [id, $(id).value])); form.commCustom = $('commCustom').checked;
+        const result = await api('/api/presets', {method:'POST', body:JSON.stringify({id:update ? $('commPreset').value : undefined, name:$('commPresetName').value, form})});
+        await loadPresets(result.preset.id); toast('Template saved');
+      } catch(e) { toast(e.message, true); }
+    }
+    $('commSavePreset').onclick = () => savePreset(false);
+    $('commUpdatePreset').onclick = () => savePreset(true);
+    $('commLoadPreset').onclick = () => {
+      const p = commandPresets.find(p => p.id === $('commPreset').value); if (!p) return;
+      for (const id of presetFields) $(id).value = p.form[id] ?? '';
+      $('commCustom').checked = p.form.commCustom === true; $('commPresetName').value = p.name; $('commAction').onchange();
+      toast($('commGateway').value ? 'Template loaded — press Run to send' : 'Gateway no longer exists — select a gateway before Run');
+    };
+    $('commDeletePreset').onclick = async () => {
+      const id = $('commPreset').value; if (!id || !confirm('Delete selected template?')) return;
+      try { await api('/api/presets/' + encodeURIComponent(id), {method:'DELETE'}); await loadPresets(); } catch(e) { toast(e.message, true); }
+    };
+    loadPresets().catch(e => toast(e.message, true));
     resetForm(); refresh(); setInterval(refresh, 4000);
   </script>
 </body>

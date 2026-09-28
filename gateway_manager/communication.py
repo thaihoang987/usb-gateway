@@ -34,12 +34,29 @@ def build_request(config, payload):
         return b""
     if action == "modbus":
         unit = number(payload, "unit", 1, 1, 247)
-        function = number(payload, "function", 3, 1, 4)
+        function = number(payload, "function", 3, 1, 127)
         address = number(payload, "address", 0, 0, 65535)
-        quantity = number(payload, "quantity", 1, 1, 2000 if function < 3 else 125)
-        if address + quantity > 65536:
-            raise ConfigError("Address range exceeds 65535")
-        frame = struct.pack(">BBHH", unit, function, address, quantity)
+        if payload.get("custom_body") or function not in {1, 2, 3, 4, 5, 6}:
+            body = payload.get("body", "")
+            if not isinstance(body, str) or len(body) > 2048:
+                raise ConfigError("Invalid function data")
+            try:
+                data = bytes.fromhex(body)
+            except ValueError:
+                raise ConfigError("Function data must contain HEX byte pairs")
+            if len(data) > 252:
+                raise ConfigError("Function data exceeds 252 bytes")
+            frame = bytes([unit, function]) + data
+        elif function in {5, 6}:
+            value = number(payload, "value", 0, 0, 65535)
+            if function == 5 and value not in {0, 65280}:
+                raise ConfigError("FC05 value must be 0 (OFF) or 65280 (ON)")
+            frame = struct.pack(">BBHH", unit, function, address, value)
+        else:
+            quantity = number(payload, "quantity", 1, 1, 2000 if function < 3 else 125)
+            if address + quantity > 65536:
+                raise ConfigError("Address range exceeds 65535")
+            frame = struct.pack(">BBHH", unit, function, address, quantity)
         if config["mode"] == "modbus":
             return struct.pack(">HHH", 1, 0, len(frame)) + frame
         return frame + struct.pack("<H", crc16(frame))

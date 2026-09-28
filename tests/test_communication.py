@@ -15,7 +15,7 @@ class CommunicationTests(unittest.TestCase):
         self.assertEqual(frame.hex(), '000100000006010300000001')
 
     def test_invalid_requests(self):
-        for payload in [{'action': 'modbus', 'function': 6}, {'action': 'modbus', 'address': 65535, 'quantity': 2}, {'action': 'hex', 'data': 'xx'}]:
+        for payload in [{'action': 'modbus', 'function': 128}, {'action': 'modbus', 'address': 65535, 'quantity': 2}, {'action': 'hex', 'data': 'xx'}]:
             with self.assertRaises(ConfigError):
                 build_request({'mode': 'raw'}, payload)
         with self.assertRaises(ConfigError):

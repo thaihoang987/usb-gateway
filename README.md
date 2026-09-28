@@ -109,3 +109,5 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for implementation details.
 ## USB reconnect in Docker
 
 With the existing privileged container and read-only /dev/serial mount, workers recreate a missing ttyUSB/ttyACM device node in the container’s private /dev using the configured by-path symlink and live USB serial metadata from sysfs. Only serial majors 188/166 are accepted; existing nodes are never replaced. No whole-host /dev mount is needed. Waiting and node restoration are logged. The USB must return at the saved topology. Update the container image to receive this fix; TCP clients must reconnect after interruption.
+
+Communication accepts function codes 1–127 in decimal, with an optional custom HEX body after the function byte. FC05/06 support address/value entry. Other functions use the HEX body; CRC or MBAP is added for the gateway mode. Named form templates are persisted in /config/communication-presets.json; loading a template never sends it. Use Run to send after reviewing the selected gateway and values.

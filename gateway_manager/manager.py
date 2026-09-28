@@ -10,12 +10,14 @@ from typing import Any
 from .config import ConfigError, ConfigStore, normalize_port, validate_ports
 from .devices import scan_devices
 from .communication import exchange
+from .presets import PresetStore
 from .workers import GatewayWorker, create_worker
 
 
 class GatewayManager:
     def __init__(self, store: ConfigStore):
         self.store = store
+        self.presets = PresetStore(store.path.with_name("communication-presets.json"))
         self.lock = threading.RLock()
         self.ports = store.load()
         self.workers: dict[str, GatewayWorker] = {}
