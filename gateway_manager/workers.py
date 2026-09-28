@@ -12,6 +12,8 @@ from typing import Any
 
 import serial
 
+from .hotplug import ensure_serial_node
+
 
 def _now() -> str:
     return datetime.now().astimezone().isoformat(timespec="seconds")
@@ -77,6 +79,23 @@ class GatewayWorker:
         except Exception as exc:  # pragma: no cover - last-resort containment
             self.log("error", f"Unhandled worker error: {exc}")
             self.set_status("error", str(exc))
+
+    def _device_ready(self) -> bool:
+        device = self.config["device"]
+        try:
+            was_present = os.path.exists(device)
+            ready = ensure_serial_node(device)
+            if ready:
+                if not was_present:
+                    self.log("info", f"Restored serial device for topology {device}")
+                return True
+            message = f"Waiting for USB topology {device}"
+        except (OSError, ValueError) as exc:
+            message = f"USB topology unavailable: {device}: {exc}"
+        if self.message != message:
+            self.log("warning", message)
+        self.set_status("waiting", message)
+        return False
 
     def run(self) -> None:
         raise NotImplementedError
@@ -148,8 +167,7 @@ class MbusdWorker(GatewayWorker):
     def run(self) -> None:
         while not self.stop_event.is_set():
             device = self.config["device"]
-            if not os.path.exists(device):
-                self.set_status("waiting", f"Waiting for {device}")
+            if not self._device_ready():
                 self.stop_event.wait(2)
                 continue
 
@@ -346,8 +364,7 @@ class RawSerialWorker(GatewayWorker):
     def run(self) -> None:
         while not self.stop_event.is_set():
             device = self.config["device"]
-            if not os.path.exists(device):
-                self.set_status("waiting", f"Waiting for {device}")
+            if not self._device_ready():
                 self.stop_event.wait(2)
                 continue
             try:

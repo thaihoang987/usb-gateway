@@ -105,3 +105,7 @@ python -m unittest discover -s tests -v
 ```
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for implementation details.
+
+## USB reconnect in Docker
+
+With the existing privileged container and read-only /dev/serial mount, workers recreate a missing ttyUSB/ttyACM device node in the container’s private /dev using the configured by-path symlink and live USB serial metadata from sysfs. Only serial majors 188/166 are accepted; existing nodes are never replaced. No whole-host /dev mount is needed. Waiting and node restoration are logged. The USB must return at the saved topology. Update the container image to receive this fix; TCP clients must reconnect after interruption.
