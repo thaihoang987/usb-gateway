@@ -1,8 +1,10 @@
 FROM alpine:3.22 AS mbusd-build
 
-ARG MBUSD_REF=master
-RUN apk add --no-cache cmake gcc git linux-headers make musl-dev && \
-    git clone --depth 1 --branch "$MBUSD_REF" https://github.com/3cky/mbusd.git /src/mbusd && \
+ARG MBUSD_REF=c91a1ed964e19c679d578cbe41600bdf4b3d4dde
+RUN apk add --no-cache alpine-sdk bash cmake git linux-headers && \
+    git init /src/mbusd && \
+    git -C /src/mbusd fetch --depth 1 https://github.com/3cky/mbusd.git "$MBUSD_REF" && \
+    git -C /src/mbusd checkout --detach FETCH_HEAD && \
     cmake -S /src/mbusd -B /src/mbusd/build \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_INSTALL_PREFIX=/usr/local && \
