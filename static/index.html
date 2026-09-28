@@ -23,7 +23,7 @@
     }
     * { box-sizing: border-box; }
     body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, sans-serif; }
-    button, input, select { font: inherit; }
+    button, input, select, textarea { font: inherit; }
     header { background: #17212b; color: #fff; border-bottom: 3px solid var(--accent); }
     .topbar { max-width: 1440px; margin: auto; padding: 14px 20px; display: flex; align-items: center; gap: 16px; }
     .brand { font-size: 19px; font-weight: 700; }
@@ -45,6 +45,12 @@
     label { display: block; color: var(--muted); font-size: 12px; margin-bottom: 4px; }
     input, select { width: 100%; height: 36px; border: 1px solid #b9c1cb; border-radius: 4px; padding: 0 9px; background: #fff; color: var(--text); }
     input:focus, select:focus { outline: 2px solid #b6dfd1; border-color: var(--accent); }
+    textarea { width: 100%; min-height: 72px; padding: 8px; border: 1px solid #b9c1cb; border-radius: 4px; resize: vertical; }
+    .notes { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 310px; font-size: 12px; margin-top: 4px; }
+    tr.disconnected { background: #f1f3f5; color: var(--muted); }
+    tr.disconnected td:not(:last-child) { opacity: .65; }
+    option.disconnected { color: #66717f; }
+    .disconnected.badge { background: #e2e5e9; color: #47515c; }
     .field { margin-bottom: 11px; }
     .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .checks { display: flex; gap: 18px; margin: 10px 0 14px; }
@@ -52,6 +58,7 @@
     .checks input { width: 15px; height: 15px; }
     .form-actions { display: flex; gap: 8px; padding-top: 4px; }
     .form-actions button { flex: 1; }
+    #deviceHint { margin-top: 8px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
     .hint { font-size: 12px; color: var(--muted); margin: -4px 0 12px; }
     .table-wrap { overflow-x: auto; }
     table { width: 100%; border-collapse: collapse; min-width: 860px; }
@@ -111,6 +118,10 @@
             <input id="name" required maxlength="64" placeholder="arduino-controller">
           </div>
           <div class="field">
+            <label for="notes">Notes / USB purpose</label>
+            <textarea id="notes" maxlength="1000" placeholder="e.g. Garage relay board, USB hub port 3"></textarea>
+          </div>
+          <div class="field">
             <label for="mode">Protocol</label>
             <select id="mode">
               <option value="raw">Raw TCP ↔ UART</option>
@@ -118,10 +129,10 @@
             </select>
           </div>
           <div class="field">
-            <label for="device">USB device</label>
+            <label for="device">USB physical port (topology)</label>
             <select id="device" required></select>
           </div>
-          <div class="hint" id="deviceHint">Use a stable by-id or by-path device whenever possible.</div>
+          <div class="hint" id="deviceHint">Gateways are bound to the physical USB port using by-path.</div>
           <div class="grid2">
             <div class="field"><label for="tcpPort">TCP port</label><input id="tcpPort" type="number" min="1" max="65535" required value="8888"></div>
             <div class="field"><label for="baud">Baud rate</label><input id="baud" type="number" min="300" max="4000000" required value="9600"></div>
@@ -200,13 +211,31 @@
     }
 
     function renderDevices(selected = '') {
-      const choices = [...state.devices];
+      const choices = state.devices.flatMap(d => {
+        const aliases = [...new Set((d.by_path || []).length ? d.by_path : [d.path])];
+        return aliases.map(path => ({...d, path}));
+      });
       if (selected && !choices.some(d => d.path === selected)) {
         choices.unshift({path: selected, real_path: selected, present: false, claimed_by: null});
       }
       $('device').innerHTML = choices.length
-        ? choices.map(d => `<option value="${escapeHtml(d.path)}" ${d.path === selected ? 'selected' : ''}>${escapeHtml(d.path)}${d.claimed_by ? ` — in use by: ${escapeHtml(d.claimed_by)}` : ''}${d.present ? '' : ' — disconnected'}</option>`).join('')
+        ? choices.map(d => `<option ${d.path.startsWith('/dev/serial/by-path/') ? '' : 'disabled'} class="${d.present ? '' : 'disconnected'}" value="${escapeHtml(d.path)}" ${d.path === selected ? 'selected' : ''}>${escapeHtml([d.usb_port ? `Port ${d.usb_port}` : '', d.product || d.tty || '', d.path].filter(Boolean).join(' · '))}${d.claimed_by ? ` — in use by: ${escapeHtml(d.claimed_by)}` : ''}${d.present ? '' : ' — disconnected'}${d.path.startsWith('/dev/serial/by-path/') ? '' : ' — topology unavailable; select a physical port'}</option>`).join('')
         : '<option value="">No USB serial devices found</option>';
+      renderDeviceDetails();
+    }
+
+    function renderDeviceDetails() {
+      const path = $('device').value;
+      const d = state.devices.find(d => [d.path, d.real_path, ...(d.by_id || []), ...(d.by_path || [])].includes(path));
+      $('deviceHint').textContent = d ? [
+        'USB: ' + ([d.manufacturer, d.product].filter(Boolean).join(' / ') || 'Unknown'),
+        'Physical port: ' + (d.usb_port || 'Unavailable') + ' · TTY: ' + (d.real_path || 'Unavailable'),
+        'Serial: ' + (d.serial || 'Not provided') + ' · VID:PID: ' + (d.vid && d.pid ? d.vid + ':' + d.pid : 'Unavailable'),
+        'By-id: ' + ((d.by_id || []).join(', ') || 'Unavailable'),
+        'By-path: ' + ((d.by_path || []).join(', ') || 'Unavailable'),
+        'Selected: ' + path,
+        d.present ? 'Connected. Binding is fixed to this physical USB port (by-path).' : 'Disconnected — saved gateway retained.'
+      ].join('\n') : (path ? 'Disconnected — saved path: ' + path : 'No USB serial devices found.');
     }
 
     function renderPorts() {
@@ -217,11 +246,14 @@
       $('portRows').innerHTML = state.ports.map(p => {
         const rt = p.runtime;
         const mode = p.mode === 'modbus' ? 'Modbus TCP → RTU' : 'Raw TCP ↔ UART';
-        return `<tr>
-          <td><div class="name">${escapeHtml(p.name)}</div><div class="sub" title="${escapeHtml(p.device)}">${escapeHtml(p.device)}</div></td>
+        const missing = p.device_present === false;
+        const status = missing ? 'disconnected' : rt.status;
+        const message = missing ? 'USB disconnected — configuration retained' : rt.message;
+        return `<tr class="${missing ? 'disconnected' : ''}">
+          <td><div class="name">${escapeHtml(p.name)}</div>${p.notes ? `<div class="notes">${escapeHtml(p.notes)}</div>` : ''}<div class="sub" title="${escapeHtml(p.device)}">${escapeHtml(p.device)}</div></td>
           <td>${mode}<div class="sub">${p.baud} ${p.data_bits}${p.parity}${p.stop_bits}</div></td>
           <td>:${p.tcp_port}</td>
-          <td><span class="badge ${escapeHtml(rt.status)}">${escapeHtml(rt.status)}</span><div class="sub" title="${escapeHtml(rt.message)}">${escapeHtml(rt.message)}</div></td>
+          <td><span class="badge ${escapeHtml(status)}">${escapeHtml(status)}</span><div class="sub" title="${escapeHtml(message)}">${escapeHtml(message)}</div></td>
           <td>${rt.client_count ?? 0}</td>
           <td><div class="actions">
             <button onclick="editPort('${p.id}')">Edit</button>
@@ -244,6 +276,7 @@
     window.editPort = id => {
       const p = state.ports.find(item => item.id === id); if (!p) return;
       state.editing = id; $('formTitle').textContent = `Edit ${p.name}`; $('portId').value = id; $('name').value = p.name;
+      $('notes').value = p.notes || '';
       $('mode').value = p.mode; renderDevices(p.device); $('tcpPort').value = p.tcp_port; $('baud').value = p.baud;
       $('dataBits').value = p.data_bits; $('parity').value = p.parity; $('stopBits').value = p.stop_bits;
       $('enabled').checked = p.enabled; $('dtr').checked = p.dtr; $('rts').checked = p.rts; $('logLevel').value = p.log_level;
@@ -259,14 +292,15 @@
       try {
         const [ports, devices] = await Promise.all([api('/api/ports'), api('/api/devices')]);
         state.ports = ports.ports; state.devices = devices.devices; renderPorts();
-        renderDevices(state.editing ? state.ports.find(p => p.id === state.editing)?.device : $('device').value);
+        renderDevices($('device').value);
       } catch (e) { toast(`Unable to load status: ${e.message}`, true); }
     }
 
     $('portForm').addEventListener('submit', async event => {
       event.preventDefault();
+      if (!$('device').value.startsWith('/dev/serial/by-path/')) { toast('Select a USB physical port (by-path) before saving.', true); return; }
       const payload = {
-        name: $('name').value.trim(), mode: $('mode').value, device: $('device').value,
+        name: $('name').value.trim(), notes: $('notes').value, mode: $('mode').value, device: $('device').value,
         tcp_port: Number($('tcpPort').value), baud: Number($('baud').value), data_bits: Number($('dataBits').value),
         parity: $('parity').value, stop_bits: Number($('stopBits').value), enabled: $('enabled').checked,
         dtr: $('dtr').checked, rts: $('rts').checked, log_level: Number($('logLevel').value),
@@ -277,6 +311,7 @@
         toast(id ? 'Gateway updated' : 'Gateway added'); resetForm(); await refresh();
       } catch (e) { toast(e.message, true); }
     });
+    $('device').addEventListener('change', renderDeviceDetails);
     $('mode').addEventListener('change', modeChanged); $('cancelBtn').addEventListener('click', resetForm);
     $('newBtn').addEventListener('click', resetForm); $('refreshBtn').addEventListener('click', refresh);
     $('closeLogBtn').addEventListener('click', () => $('logDialog').close());

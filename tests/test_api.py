@@ -57,7 +57,7 @@ class ApiTests(unittest.TestCase):
         payload = {
             "name": "arduino-test",
             "mode": "raw",
-            "device": "/dev/ttyUSB99",
+            "device": "/dev/serial/by-path/test99",
             "baud": 115200,
             "tcp_port": 8899,
             "enabled": False,
@@ -77,7 +77,7 @@ class ApiTests(unittest.TestCase):
         payload = {
             "name": "bad-port",
             "mode": "raw",
-            "device": "/dev/ttyUSB99",
+            "device": "/dev/serial/by-path/test99",
             "baud": 9600,
             "tcp_port": "8888 ",
             "enabled": False,

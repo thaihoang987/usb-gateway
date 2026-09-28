@@ -42,7 +42,7 @@ def _as_int(value: Any, field: str, minimum: int, maximum: int) -> int:
     return result
 
 
-def normalize_port(payload: dict[str, Any], port_id: str | None = None) -> dict[str, Any]:
+def normalize_port(payload: dict[str, Any], port_id: str | None = None, *, allow_legacy: bool = False) -> dict[str, Any]:
     name = str(payload.get("name", "")).strip()
     if not NAME_RE.fullmatch(name):
         raise ConfigError("name must use 1-64 letters, numbers, dot, dash or underscore")
@@ -55,14 +55,26 @@ def normalize_port(payload: dict[str, Any], port_id: str | None = None) -> dict[
     if not device.startswith("/dev/") or "\x00" in device:
         raise ConfigError("device must be an absolute /dev path")
 
+    topology_bound = (device.startswith("/dev/serial/by-path/")
+                      and bool(device.removeprefix("/dev/serial/by-path/"))
+                      and "/" not in device.removeprefix("/dev/serial/by-path/")
+                      and device.rsplit("/", 1)[-1] not in {".", ".."})
+    if not topology_bound and not allow_legacy:
+        raise ConfigError("Select a USB topology path under /dev/serial/by-path/; by-id and tty paths are not allowed")
+
     parity = str(payload.get("parity", "N")).strip().upper()
     if parity not in VALID_PARITY:
         raise ConfigError("parity must be N, E or O")
 
+    notes = payload.get("notes", "")
+    if not isinstance(notes, str) or len(notes) > 1000:
+        raise ConfigError("notes must be text up to 1000 characters")
+
     return {
+        "notes": notes,
         "id": port_id or str(payload.get("id") or uuid.uuid4().hex[:12]),
         "name": name,
-        "enabled": _as_bool(payload.get("enabled"), True),
+        "enabled": _as_bool(payload.get("enabled"), True) if topology_bound else False,
         "mode": mode,
         "device": device,
         "baud": _as_int(payload.get("baud", 9600), "baud", 300, 4_000_000),
@@ -128,7 +140,7 @@ class ConfigStore:
         entries = raw.get("ports", []) if isinstance(raw, dict) else []
         if not isinstance(entries, list):
             raise ConfigError("ports must be a list")
-        ports = [normalize_port(entry, str(entry.get("id") or "") or None) for entry in entries]
+        ports = [normalize_port(entry, str(entry.get("id") or "") or None, allow_legacy=True) for entry in entries]
         validate_ports(ports)
         return ports
 

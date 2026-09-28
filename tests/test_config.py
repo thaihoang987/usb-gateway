@@ -10,7 +10,7 @@ def port_payload(**overrides):
     payload = {
         "name": "arduino-one",
         "mode": "raw",
-        "device": "/dev/serial/by-id/usb-arduino-one",
+        "device": "/dev/serial/by-path/usb-arduino-one",
         "baud": 115200,
         "tcp_port": 8890,
     }
@@ -38,7 +38,7 @@ class NormalizePortTests(unittest.TestCase):
     def test_rejects_duplicate_enabled_tcp_port(self):
         first = normalize_port(port_payload(), "one")
         second = normalize_port(
-            port_payload(name="relay", device="/dev/ttyUSB9"), "two"
+            port_payload(name="relay", device="/dev/serial/by-path/test9"), "two"
         )
         with self.assertRaisesRegex(ConfigError, "TCP port 8890"):
             validate_ports([first, second])
@@ -47,7 +47,7 @@ class NormalizePortTests(unittest.TestCase):
         first = normalize_port(port_payload(), "one")
         second = normalize_port(
             port_payload(
-                name="relay", device="/dev/ttyUSB9", enabled=False
+                name="relay", device="/dev/serial/by-path/test9", enabled=False
             ),
             "two",
         )

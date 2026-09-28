@@ -3,6 +3,7 @@ from __future__ import annotations
 import glob
 import os
 from typing import Any
+from pathlib import Path
 
 
 def _aliases(directory: str) -> dict[str, list[str]]:
@@ -12,6 +13,28 @@ def _aliases(directory: str) -> dict[str, list[str]]:
             continue
         result.setdefault(os.path.realpath(path), []).append(path)
     return result
+
+
+def device_details(real_path: str) -> dict[str, str]:
+    details: dict[str, str] = {"tty": os.path.basename(real_path)}
+    node = Path("/sys/class/tty") / details["tty"] / "device"
+    try:
+        resolved = node.resolve(strict=True)
+        for parent in [resolved, *resolved.parents]:
+            if (parent / "idVendor").exists():
+                details["usb_port"] = parent.name
+                for key, filename in {
+                    "manufacturer": "manufacturer", "product": "product",
+                    "serial": "serial", "vid": "idVendor", "pid": "idProduct",
+                }.items():
+                    try:
+                        details[key] = (parent / filename).read_text().strip()
+                    except OSError:
+                        pass
+                break
+    except (OSError, RuntimeError):
+        pass
+    return details
 
 
 def scan_devices() -> list[dict[str, Any]]:
@@ -25,10 +48,12 @@ def scan_devices() -> list[dict[str, Any]]:
     for real_path in sorted(os.path.realpath(path) for path in real_paths):
         id_aliases = by_id.get(real_path, [])
         path_aliases = by_path.get(real_path, [])
-        preferred = (id_aliases or path_aliases or [real_path])[0]
+        preferred = (path_aliases or [real_path])[0]
         devices.append(
             {
+                **device_details(real_path),
                 "path": preferred,
+                "topology_available": bool(path_aliases),
                 "real_path": real_path,
                 "by_id": id_aliases,
                 "by_path": path_aliases,

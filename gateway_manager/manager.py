@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import os
 import socket
 import threading
 import time
@@ -33,7 +34,7 @@ class GatewayManager:
         desired = {port["id"]: port for port in self.ports if port["enabled"]}
         for port_id, worker in list(self.workers.items()):
             config = desired.get(port_id)
-            if config is None or config != worker.config:
+            if config is None or {k: v for k, v in config.items() if k != "notes"} != {k: v for k, v in worker.config.items() if k != "notes"}:
                 worker.stop()
                 del self.workers[port_id]
         for port_id, config in desired.items():
@@ -53,10 +54,11 @@ class GatewayManager:
             result: list[dict[str, Any]] = []
             for port in self.ports:
                 item = copy.deepcopy(port)
+                item["device_present"] = os.path.exists(port["device"])
                 worker = self.workers.get(port["id"])
                 item["runtime"] = worker.snapshot() if worker else {
                     "status": "disabled",
-                    "message": "Disabled",
+                    "message": "Select a USB topology path to re-enable this gateway" if not port["device"].startswith("/dev/serial/by-path/") else "Disabled",
                     "started_at": None,
                     "restart_count": 0,
                     "client_count": 0,
@@ -129,10 +131,20 @@ class GatewayManager:
             claimed = {
                 port["device"]: port["name"] for port in self.ports if port["enabled"]
             }
+            saved_ports = copy.deepcopy(self.ports)
         devices = scan_devices()
         for device in devices:
             aliases = [device["path"], device["real_path"], *device["by_id"], *device["by_path"]]
             device["claimed_by"] = next(
                 (name for path, name in claimed.items() if path in aliases), None
             )
+        known_paths = {alias for d in devices for alias in [d["path"], d["real_path"], *d["by_id"], *d["by_path"]]}
+        for port in saved_ports:
+            if port["device"] not in known_paths:
+                devices.append({
+                    "path": port["device"], "real_path": os.path.realpath(port["device"]),
+                    "by_id": [], "by_path": [], "present": os.path.exists(port["device"]),
+                    "claimed_by": port["name"] if port["enabled"] else None,
+                })
+                known_paths.add(port["device"])
         return devices

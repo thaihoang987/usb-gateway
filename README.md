@@ -15,7 +15,11 @@ serial gateways from one Web UI:
 
 - Modbus TCP to Modbus RTU through one `mbusd` process per USB device.
 - Raw TCP to UART for Arduino, text, JSON, and custom binary protocols.
-- Discovery through `/dev/serial/by-id` and `/dev/serial/by-path`.
+- All gateway bindings use `/dev/serial/by-path` (USB topology). By-id, serial numbers and tty names are diagnostic information only.
+- Legacy bindings using by-id or tty are retained but disabled on load; select a physical USB port and enable them again. No automatic identity-based fallback is used.
+- Keep the USB controller, hub and physical cabling unchanged to preserve topology. Moving a device to another port does not move its gateway binding.
+- Notes for each gateway describe the USB device and its purpose.
+- Saved gateways remain visible in gray when their USB is unplugged, including after app restarts. Notes and settings are retained until explicitly deleted.
 - Persistent configuration at `/mnt/user/appdata/usb-gateway/config.json`.
 - Automatic gateway recovery after Docker or Unraid restarts.
 

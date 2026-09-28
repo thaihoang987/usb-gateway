@@ -19,7 +19,7 @@ class WorkerTests(unittest.TestCase):
             {
                 "name": "relay",
                 "mode": "modbus",
-                "device": "/dev/serial/by-id/relay",
+                "device": "/dev/serial/by-path/relay",
                 "baud": 9600,
                 "tcp_port": 8891,
                 "parity": "E",
@@ -52,7 +52,7 @@ class WorkerTests(unittest.TestCase):
                 {
                     "name": "arduino",
                     "mode": "raw",
-                    "device": "/dev/serial/by-id/arduino",
+                    "device": "/dev/serial/by-path/arduino",
                     "baud": 115200,
                     "tcp_port": 8890,
                 },
