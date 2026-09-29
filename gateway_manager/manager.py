@@ -90,6 +90,14 @@ class GatewayManager:
             self._save(ports)
             return copy.deepcopy(updated)
 
+    def reorder_ports(self, ordered_ids: list[str]) -> None:
+        with self.lock:
+            current_ids = [port["id"] for port in self.ports]
+            if len(ordered_ids) != len(current_ids) or set(ordered_ids) != set(current_ids):
+                raise ConfigError("ordered_ids must contain every gateway id exactly once")
+            by_id = {port["id"]: port for port in self.ports}
+            self._save([by_id[port_id] for port_id in ordered_ids])
+
     def delete_port(self, port_id: str) -> None:
         with self.lock:
             self.get_port(port_id)

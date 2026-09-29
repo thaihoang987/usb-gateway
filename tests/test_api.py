@@ -53,7 +53,7 @@ class ApiTests(unittest.TestCase):
         status, health = self.request("/api/health")
         self.assertEqual(status, 200)
         self.assertTrue(health["ok"])
-        self.assertEqual(health["version"], "0.3.0")
+        self.assertEqual(health["version"], "0.4.0")
 
         payload = {
             "name": "arduino-test",
@@ -96,6 +96,33 @@ class ApiTests(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError) as caught:
             self.request("/api/ports", "POST", payload)
         self.assertEqual(caught.exception.code, 400)
+
+    def test_reorders_ports_and_persists_order(self):
+        payload = {
+            "mode": "raw",
+            "device": "/dev/serial/by-path/test99",
+            "baud": 9600,
+            "enabled": False,
+        }
+        _, first = self.request(
+            "/api/ports", "POST", {**payload, "name": "first", "tcp_port": 8891}
+        )
+        _, second = self.request(
+            "/api/ports", "POST", {**payload, "name": "second", "tcp_port": 8892}
+        )
+        ordered_ids = [second["port"]["id"], first["port"]["id"]]
+
+        status, result = self.request(
+            "/api/ports/reorder", "POST", {"ordered_ids": ordered_ids}
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(result["ok"])
+
+        _, listed = self.request("/api/ports")
+        self.assertEqual([port["id"] for port in listed["ports"]], ordered_ids)
+        self.assertEqual(
+            [port["id"] for port in self.manager.store.load()], ordered_ids
+        )
 
 
 if __name__ == "__main__":

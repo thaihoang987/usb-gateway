@@ -99,6 +99,13 @@ class ApiHandler(BaseHTTPRequestHandler):
             parts = self._parts()
             if parts == ["api", "presets"]:
                 self._json(HTTPStatus.OK, {"preset": self.manager.presets.save(self._read_json())})
+            elif parts == ["api", "ports", "reorder"]:
+                payload = self._read_json()
+                ordered_ids = payload.get("ordered_ids")
+                if not isinstance(ordered_ids, list) or not all(isinstance(item, str) for item in ordered_ids):
+                    raise ConfigError("ordered_ids must be a list of gateway ids")
+                self.manager.reorder_ports(ordered_ids)
+                self._json(HTTPStatus.OK, {"ok": True})
             elif parts == ["api", "ports"]:
                 port = self.manager.add_port(self._read_json())
                 self._json(HTTPStatus.CREATED, {"port": port})

@@ -85,6 +85,13 @@
     .disabled, .stopped { color: var(--muted); background: #edf0f3; }
     .actions { display: flex; gap: 5px; white-space: nowrap; }
     .actions button { height: 30px; padding: 0 8px; font-size: 12px; }
+    .drag-cell { width: 42px; padding-right: 2px; }
+    .drag-handle { width: 30px; min-width: 30px; height: 34px; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 19px; line-height: 1; letter-spacing: 0; cursor: grab; touch-action: none; user-select: none; }
+    .drag-handle:hover { border: 0; background: #edf0f3; color: var(--text); }
+    .drag-handle:active { cursor: grabbing; }
+    .sortable-ghost { opacity: .35; }
+    .sortable-chosen { background: #eef8f4; }
+    .sortable-fallback { display: table; opacity: .96 !important; background: var(--surface); box-shadow: 0 10px 24px rgba(0,0,0,.24); outline: 2px solid var(--accent); cursor: grabbing; }
     .empty { padding: 52px 20px; text-align: center; color: var(--muted); }
     dialog { width: min(900px, calc(100vw - 32px)); border: 1px solid var(--line); border-radius: 6px; padding: 0; box-shadow: 0 22px 60px rgba(0,0,0,.28); }
     dialog::backdrop { background: rgba(13, 24, 34, .55); }
@@ -222,7 +229,7 @@
         <div class="panel-title">Gateway list</div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Name</th><th>Mode</th><th>TCP</th><th>On/Off</th><th>Status</th><th>Clients</th><th>Actions</th></tr></thead>
+            <thead><tr><th aria-label="Reorder"></th><th>Name</th><th>Mode</th><th>TCP</th><th>On/Off</th><th>Status</th><th>Clients</th><th>Actions</th></tr></thead>
             <tbody id="portRows"></tbody>
           </table>
           <div class="empty" id="emptyState">No gateways configured. Select a USB device and add the first gateway.</div>
@@ -235,8 +242,9 @@
     <pre id="logContent"></pre>
   </dialog>
   <div class="toast" id="toast"></div>
+  <script src="/sortable.min.js"></script>
   <script>
-    const state = { ports: [], devices: [], editing: null, toggling: new Set() };
+    const state = { ports: [], devices: [], editing: null, toggling: new Set(), dragging: false };
     const $ = id => document.getElementById(id);
     const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 
@@ -315,7 +323,8 @@
         const missing = p.device_present === false;
         const status = missing ? 'disconnected' : rt.status;
         const message = missing ? 'USB disconnected — configuration retained' : rt.message;
-        return `<tr class="${missing ? 'disconnected' : ''}">
+        return `<tr data-id="${p.id}" class="${missing ? 'disconnected' : ''}">
+          <td class="drag-cell"><button type="button" class="drag-handle" title="Drag to reorder" aria-label="Drag ${escapeHtml(p.name)} to reorder">&#8942;&#8942;</button></td>
           <td><div class="name">${escapeHtml(p.name)}</div>${p.notes ? `<div class="notes">${escapeHtml(p.notes)}</div>` : ''}<div class="sub" title="${escapeHtml(p.device)}">${escapeHtml(p.device)}</div></td>
           <td>${mode}<div class="sub">${p.baud} ${p.data_bits}${p.parity}${p.stop_bits}</div></td>
           <td>:${p.tcp_port}</td>
@@ -371,6 +380,7 @@
     window.showLogs = async id => { const p = state.ports.find(x => x.id === id); try { const data = await api(`/api/ports/${id}/logs?limit=300`); $('logTitle').textContent = `Log — ${p?.name || id}`; $('logContent').textContent = data.logs.map(x => `${x.time} [${x.level}] ${x.message}`).join('\n') || 'No logs available.'; $('logDialog').showModal(); } catch (e) { toast(e.message, true); } };
 
     async function refresh() {
+      if (state.dragging) return;
       try {
         const [health, ports, devices] = await Promise.all([api('/api/health'), api('/api/ports'), api('/api/devices')]);
         $('appVersion').textContent = `v${health.version}`;
@@ -456,6 +466,27 @@
       const id = $('commPreset').value; if (!id || !confirm('Delete selected template?')) return;
       try { await api('/api/presets/' + encodeURIComponent(id), {method:'DELETE'}); await loadPresets(); } catch(e) { toast(e.message, true); }
     };
+    function removeStaleDragClones() {
+      document.querySelectorAll('.sortable-fallback').forEach(element => element.remove());
+    }
+    Sortable.create($('portRows'), {
+      handle: '.drag-handle', draggable: 'tr', animation: 150,
+      forceFallback: true, fallbackTolerance: 3, fallbackOnBody: true,
+      onChoose: removeStaleDragClones,
+      onStart: () => { state.dragging = true; },
+      onEnd: async event => {
+        try {
+          if (event.oldIndex === event.newIndex) return;
+          const orderedIds = [...$('portRows').children].map(row => row.dataset.id).filter(Boolean);
+          await api('/api/ports/reorder', {method:'POST', body:JSON.stringify({ordered_ids: orderedIds})});
+          toast('Gateway order saved');
+        } catch (e) {
+          toast(`Unable to save gateway order: ${e.message}`, true);
+        } finally {
+          removeStaleDragClones(); state.dragging = false; await refresh();
+        }
+      }
+    });
     loadPresets().catch(e => toast(e.message, true));
     resetForm(); refresh(); setInterval(refresh, 4000);
   </script>
