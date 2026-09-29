@@ -27,6 +27,7 @@
     header { background: #17212b; color: #fff; border-bottom: 3px solid var(--accent); }
     .topbar { max-width: 1440px; margin: auto; padding: 14px 20px; display: flex; align-items: center; gap: 16px; }
     .brand { font-size: 19px; font-weight: 700; }
+    .version { color: #cbd5df; font-size: 12px; font-weight: 650; }
     .stage { color: #ffd166; font-size: 11px; font-weight: 700; text-transform: uppercase; }
     .summary { margin-left: auto; display: flex; gap: 18px; color: #cbd5df; font-size: 13px; }
     main { max-width: 1440px; margin: 0 auto; padding: 18px 20px 36px; }
@@ -96,6 +97,7 @@
   <header>
     <div class="topbar">
       <div class="brand">USB Gateway</div>
+      <div class="version" id="appVersion">v...</div>
       <div class="stage">Experimental</div>
       <div class="summary">
         <span id="countTotal">0 gateway</span>
@@ -324,7 +326,8 @@
 
     async function refresh() {
       try {
-        const [ports, devices] = await Promise.all([api('/api/ports'), api('/api/devices')]);
+        const [health, ports, devices] = await Promise.all([api('/api/health'), api('/api/ports'), api('/api/devices')]);
+        $('appVersion').textContent = `v${health.version}`;
         state.ports = ports.ports; state.devices = devices.devices; renderPorts();
         renderDevices($('device').value);
       } catch (e) { toast(`Unable to load status: ${e.message}`, true); }

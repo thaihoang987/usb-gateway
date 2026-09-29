@@ -10,6 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from . import __version__
 from .config import ConfigError, ConfigStore
 from .manager import GatewayManager
 
@@ -20,7 +21,7 @@ STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 class ApiHandler(BaseHTTPRequestHandler):
     manager: GatewayManager
-    server_version = "USBGateway/0.1"
+    server_version = f"USBGateway/{__version__}"
 
     def log_message(self, fmt: str, *args: object) -> None:
         print(f"[http] {self.address_string()} {fmt % args}", flush=True)
@@ -76,7 +77,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             parts = self._parts()
             query = parse_qs(urlparse(self.path).query)
             if parts == ["api", "health"]:
-                self._json(HTTPStatus.OK, {"ok": True})
+                self._json(HTTPStatus.OK, {"ok": True, "version": __version__})
             elif parts == ["api", "ports"]:
                 self._json(HTTPStatus.OK, {"ports": self.manager.list_ports()})
             elif parts == ["api", "presets"]:
