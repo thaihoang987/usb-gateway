@@ -20,8 +20,9 @@ def _now() -> str:
 
 
 class GatewayWorker:
-    def __init__(self, config: dict[str, Any]):
+    def __init__(self, config: dict[str, Any], metrics: dict[str, int] | None = None):
         self.config = dict(config)
+        metrics = metrics or {}
         self.stop_event = threading.Event()
         self.thread: threading.Thread | None = None
         self.status = "stopped"
@@ -29,6 +30,10 @@ class GatewayWorker:
         self.started_at: str | None = None
         self.restart_count = 0
         self.client_count = 0
+        self.tx_bytes = metrics.get("tx_bytes", 0)
+        self.tx_count = metrics.get("tx_count", 0)
+        self.rx_bytes = metrics.get("rx_bytes", 0)
+        self.rx_count = metrics.get("rx_count", 0)
         self.logs: collections.deque[dict[str, str]] = collections.deque(maxlen=500)
         self._state_lock = threading.Lock()
 
@@ -100,6 +105,20 @@ class GatewayWorker:
     def run(self) -> None:
         raise NotImplementedError
 
+    def record_tx(self, byte_count: int) -> None:
+        if byte_count <= 0:
+            return
+        with self._state_lock:
+            self.tx_bytes += byte_count
+            self.tx_count += 1
+
+    def record_rx(self, byte_count: int) -> None:
+        if byte_count <= 0:
+            return
+        with self._state_lock:
+            self.rx_bytes += byte_count
+            self.rx_count += 1
+
     def snapshot(self) -> dict[str, Any]:
         with self._state_lock:
             return {
@@ -108,6 +127,11 @@ class GatewayWorker:
                 "started_at": self.started_at,
                 "restart_count": self.restart_count,
                 "client_count": self.client_count,
+                "metrics_available": True,
+                "tx_bytes": self.tx_bytes,
+                "tx_count": self.tx_count,
+                "rx_bytes": self.rx_bytes,
+                "rx_count": self.rx_count,
             }
 
     def get_logs(self, limit: int = 200) -> list[dict[str, str]]:
@@ -116,10 +140,15 @@ class GatewayWorker:
 
 
 class MbusdWorker(GatewayWorker):
-    def __init__(self, config: dict[str, Any], binary: str = "/usr/local/bin/mbusd"):
-        super().__init__(config)
+    def __init__(self, config: dict[str, Any], binary: str = "/usr/local/bin/mbusd", metrics: dict[str, int] | None = None):
+        super().__init__(config, metrics)
         self.binary = binary
         self.process: subprocess.Popen[str] | None = None
+
+    def snapshot(self) -> dict[str, Any]:
+        result = super().snapshot()
+        result["metrics_available"] = False
+        return result
 
     def _command(self) -> list[str]:
         cfg = self.config
@@ -217,8 +246,8 @@ class MbusdWorker(GatewayWorker):
 
 
 class RawSerialWorker(GatewayWorker):
-    def __init__(self, config: dict[str, Any]):
-        super().__init__(config)
+    def __init__(self, config: dict[str, Any], metrics: dict[str, int] | None = None):
+        super().__init__(config, metrics)
         self.server: socket.socket | None = None
         self.serial_port: serial.Serial | None = None
         self.clients: dict[socket.socket, str] = {}
@@ -275,6 +304,7 @@ class RawSerialWorker(GatewayWorker):
                 return
             if not chunk:
                 continue
+            self.record_rx(len(chunk))
             stale: list[socket.socket] = []
             with self.clients_lock:
                 for client in self.clients:
@@ -340,8 +370,9 @@ class RawSerialWorker(GatewayWorker):
                     if data:
                         assert self.serial_port is not None
                         with self.serial_write_lock:
-                            self.serial_port.write(data)
+                            written = self.serial_port.write(data)
                             self.serial_port.flush()
+                        self.record_tx(written)
                     else:
                         with self.clients_lock:
                             peer = self.clients.pop(ready, "client")
@@ -378,7 +409,7 @@ class RawSerialWorker(GatewayWorker):
                 self.stop_event.wait(3)
 
 
-def create_worker(config: dict[str, Any]) -> GatewayWorker:
+def create_worker(config: dict[str, Any], metrics: dict[str, int] | None = None) -> GatewayWorker:
     if config["mode"] == "modbus":
-        return MbusdWorker(config)
-    return RawSerialWorker(config)
+        return MbusdWorker(config, metrics=metrics)
+    return RawSerialWorker(config, metrics)

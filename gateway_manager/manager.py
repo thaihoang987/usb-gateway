@@ -21,6 +21,7 @@ class GatewayManager:
         self.lock = threading.RLock()
         self.ports = store.load()
         self.workers: dict[str, GatewayWorker] = {}
+        self.metrics: dict[str, dict[str, int]] = {}
 
     def start(self) -> None:
         with self.lock:
@@ -39,10 +40,16 @@ class GatewayManager:
             config = desired.get(port_id)
             if config is None or {k: v for k, v in config.items() if k != "notes"} != {k: v for k, v in worker.config.items() if k != "notes"}:
                 worker.stop()
+                snapshot = worker.snapshot()
+                self.metrics[port_id] = {
+                    key: snapshot[key]
+                    for key in ("tx_bytes", "tx_count", "rx_bytes", "rx_count")
+                }
                 del self.workers[port_id]
         for port_id, config in desired.items():
             if port_id not in self.workers:
-                worker = create_worker(config)
+                metrics = self.metrics.get(port_id)
+                worker = create_worker(config, metrics) if metrics else create_worker(config)
                 self.workers[port_id] = worker
                 worker.start()
 
@@ -65,6 +72,11 @@ class GatewayManager:
                     "started_at": None,
                     "restart_count": 0,
                     "client_count": 0,
+                    "metrics_available": port["mode"] == "raw",
+                    "tx_bytes": self.metrics.get(port["id"], {}).get("tx_bytes", 0),
+                    "tx_count": self.metrics.get(port["id"], {}).get("tx_count", 0),
+                    "rx_bytes": self.metrics.get(port["id"], {}).get("rx_bytes", 0),
+                    "rx_count": self.metrics.get(port["id"], {}).get("rx_count", 0),
                 }
                 result.append(item)
             return result
@@ -102,6 +114,7 @@ class GatewayManager:
         with self.lock:
             self.get_port(port_id)
             self._save([port for port in self.ports if port["id"] != port_id])
+            self.metrics.pop(port_id, None)
 
     def restart_port(self, port_id: str) -> None:
         with self.lock:

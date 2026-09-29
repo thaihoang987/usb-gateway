@@ -53,7 +53,7 @@ class ApiTests(unittest.TestCase):
         status, health = self.request("/api/health")
         self.assertEqual(status, 200)
         self.assertTrue(health["ok"])
-        self.assertEqual(health["version"], "0.4.0")
+        self.assertEqual(health["version"], "0.5.0")
 
         payload = {
             "name": "arduino-test",
@@ -69,6 +69,8 @@ class ApiTests(unittest.TestCase):
 
         _, listed = self.request("/api/ports")
         self.assertEqual(listed["ports"][0]["runtime"]["status"], "disabled")
+        self.assertTrue(listed["ports"][0]["runtime"]["metrics_available"])
+        self.assertEqual(listed["ports"][0]["runtime"]["tx_bytes"], 0)
 
         status, updated = self.request(
             f"/api/ports/{port_id}", "PUT", {"enabled": True}

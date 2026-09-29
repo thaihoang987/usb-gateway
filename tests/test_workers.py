@@ -27,11 +27,13 @@ class WorkerTests(unittest.TestCase):
             },
             "relay",
         )
-        command = workers.MbusdWorker(config)._command()
+        worker = workers.MbusdWorker(config)
+        command = worker._command()
         self.assertEqual(command[0], "/usr/local/bin/mbusd")
         self.assertIn("8E1", command)
         self.assertEqual(command[command.index("-P") + 1], "8891")
         self.assertEqual(command[command.index("-p") + 1], config["device"])
+        self.assertFalse(worker.snapshot()["metrics_available"])
 
     def test_raw_worker_sets_control_lines_before_open(self):
         events = []
@@ -64,6 +66,30 @@ class WorkerTests(unittest.TestCase):
 
         self.assertLess(events.index(("dtr", False)), events.index(("open", True)))
         self.assertLess(events.index(("rts", False)), events.index(("open", True)))
+
+    def test_raw_worker_tracks_transfer_totals(self):
+        config = normalize_port(
+            {
+                "name": "meter",
+                "mode": "raw",
+                "device": "/dev/serial/by-path/meter",
+                "baud": 9600,
+                "tcp_port": 8893,
+            },
+            "meter",
+        )
+        worker = workers.RawSerialWorker(
+            config, {"tx_bytes": 10, "tx_count": 1, "rx_bytes": 20, "rx_count": 2}
+        )
+        worker.record_tx(5)
+        worker.record_rx(7)
+
+        snapshot = worker.snapshot()
+        self.assertTrue(snapshot["metrics_available"])
+        self.assertEqual(snapshot["tx_bytes"], 15)
+        self.assertEqual(snapshot["tx_count"], 2)
+        self.assertEqual(snapshot["rx_bytes"], 27)
+        self.assertEqual(snapshot["rx_count"], 3)
 
 
 if __name__ == "__main__":
