@@ -55,6 +55,7 @@ repeated Arduino auto-reset.
 - `POST /api/ports/reorder`
 - `PUT /api/ports/{id}`, `DELETE /api/ports/{id}`
 - `POST /api/ports/{id}/restart`, `POST /api/ports/{id}/test`
+- `POST /api/ports/{id}/communication` (single commands and UI-driven scans)
 - `GET /api/ports/{id}/logs`
 - `GET /api/devices`, `GET /api/health`
 

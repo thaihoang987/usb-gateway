@@ -32,7 +32,7 @@ class CommunicationTests(unittest.TestCase):
                     client.sendall(b'answer')
             thread = threading.Thread(target=serve)
             thread.start()
-            result = exchange({'mode': 'raw', 'tcp_port': server.getsockname()[1]}, {'action': 'hex', 'data': '01 02', 'duration': 1})
+            result = exchange({'mode': 'raw', 'tcp_port': server.getsockname()[1]}, {'action': 'hex', 'data': '01 02', 'duration': 0.1})
             thread.join(2)
             self.assertEqual(received, [b'\x01\x02'])
             self.assertEqual(result['received_bytes'], 6)

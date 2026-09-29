@@ -23,6 +23,8 @@ serial gateways from one Web UI:
 - Persistent configuration at `/mnt/user/appdata/usb-gateway/config.json`.
 - Automatic gateway recovery after Docker or Unraid restarts.
 - Live TX/RX byte and chunk totals in the gateway list.
+- Communication tools for Unit ID scans, register scans, device address changes,
+  and repeated commands with a rolling log.
 
 USB Gateway does not modify the existing `mbusd-gateway` container or replace
 another USB management service. Do not enable the same USB device in multiple

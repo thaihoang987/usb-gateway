@@ -26,6 +26,16 @@ def number(payload, key, default, low, high):
     return value
 
 
+def decimal_number(payload, key, default, low, high):
+    try:
+        value = float(payload.get(key, default))
+    except (ValueError, TypeError):
+        raise ConfigError(f"{key} must be a number")
+    if not low <= value <= high:
+        raise ConfigError(f"{key} must be between {low} and {high}")
+    return value
+
+
 def build_request(config, payload):
     action = payload.get("action", "listen")
     if action == "listen":
@@ -77,7 +87,7 @@ def build_request(config, payload):
 
 
 def exchange(config, payload):
-    duration = number(payload, "duration", 2, 1, 10)
+    duration = decimal_number(payload, "duration", 2, 0.05, 10)
     outgoing = build_request(config, payload)
     started = time.monotonic()
     chunks = []

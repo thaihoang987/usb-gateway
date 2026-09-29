@@ -63,6 +63,21 @@
     .form-actions button { flex: 1; }
     #deviceHint { margin-top: 8px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
     .hint { font-size: 12px; color: var(--muted); margin: -4px 0 12px; }
+    .comm-tools { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid var(--line); margin-bottom: 16px; }
+    .comm-tool { padding: 14px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    .comm-tool:nth-child(2n) { border-right: 0; }
+    .comm-tool:nth-last-child(-n+2) { border-bottom: 0; }
+    .comm-tool h2 { margin: 0 0 4px; font-size: 15px; }
+    .comm-tool .hint { min-height: 34px; margin: 0 0 12px; }
+    .comm-tool button.primary { width: 100%; }
+    .comm-result { margin-top: 10px; max-height: 220px; overflow: auto; font-size: 12px; }
+    .comm-result table { min-width: 0; }
+    .comm-result th, .comm-result td { padding: 6px 8px; }
+    .section-heading { margin: 18px 0 10px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 15px; font-weight: 700; }
+    .repeat-actions { display: flex; gap: 8px; }
+    .repeat-log { margin-top: 10px; max-height: 190px; overflow: auto; border: 1px solid var(--line); }
+    .repeat-log table { min-width: 480px; font-size: 11px; }
+    .repeat-log th, .repeat-log td { padding: 6px 8px; word-break: break-all; }
     .table-wrap { overflow-x: auto; }
     table { width: 100%; border-collapse: collapse; min-width: 860px; }
     th { text-align: left; font-size: 11px; color: var(--muted); text-transform: uppercase; background: #f7f9fa; }
@@ -105,6 +120,9 @@
       .layout { grid-template-columns: 1fr; }
       .summary { display: none; }
       .panel.form-panel { order: 2; }
+      .comm-tools { grid-template-columns: 1fr; }
+      .comm-tool, .comm-tool:nth-child(2n), .comm-tool:nth-last-child(-n+2) { border-right: 0; border-bottom: 1px solid var(--line); }
+      .comm-tool:last-child { border-bottom: 0; }
       main { padding: 14px 10px 28px; }
     }
   </style>
@@ -137,9 +155,42 @@
           <div class="toolbar"><button type="button" id="commLoadPreset">Load</button><button type="button" id="commSavePreset">Save new</button><button type="button" id="commUpdatePreset">Update selected</button><button type="button" id="commDeletePreset">Delete</button></div>
           <div class="field"><label for="commGateway">Gateway / physical USB port</label><select id="commGateway" required></select></div>
           <p class="hint">Uses the selected gateway's TCP connection. Listening shows bytes received from UART, not other clients' outgoing requests. Replies on Raw gateways may include traffic from other clients.</p>
+          <div class="comm-tools">
+            <section class="comm-tool">
+              <h2>1. Scan Unit IDs</h2><p class="hint">Find responding Modbus devices on the selected RS-485 bus.</p>
+              <div class="grid2"><div class="field"><label for="scanUnitStart">Unit ID from</label><input id="scanUnitStart" type="number" min="1" max="247" value="1"></div><div class="field"><label for="scanUnitEnd">To</label><input id="scanUnitEnd" type="number" min="1" max="247" value="20"></div></div>
+              <div class="grid2"><div class="field"><label for="scanUnitFc">Function</label><input id="scanUnitFc" type="number" min="1" max="127" value="3"></div><div class="field"><label for="scanUnitAddress">Start address</label><input id="scanUnitAddress" type="number" min="0" max="65535" value="0"></div></div>
+              <div class="grid2"><div class="field"><label for="scanUnitQuantity">Quantity</label><input id="scanUnitQuantity" type="number" min="1" value="1"></div><div class="field"><label for="scanUnitTimeout">Timeout (s)</label><input id="scanUnitTimeout" type="number" min="0.05" max="10" step="0.05" value="0.3"></div></div>
+              <button type="button" class="primary" id="scanUnitBtn">Scan Unit IDs</button><div class="comm-result" id="scanUnitResult"></div>
+            </section>
+            <section class="comm-tool">
+              <h2>2. Scan registers</h2><p class="hint">Probe addresses for one known Unit ID. A valid reply does not identify a register's meaning.</p>
+              <div class="grid2"><div class="field"><label for="scanRegUnit">Unit ID</label><input id="scanRegUnit" type="number" min="1" max="247" value="1"></div><div class="field"><label for="scanRegFcs">Functions</label><input id="scanRegFcs" value="3,4"></div></div>
+              <div class="grid2"><div class="field"><label for="scanRegStart">Address from</label><input id="scanRegStart" type="number" min="0" max="65535" value="0"></div><div class="field"><label for="scanRegEnd">To</label><input id="scanRegEnd" type="number" min="0" max="65535" value="50"></div></div>
+              <div class="grid2"><div class="field"><label for="scanRegQuantity">Quantity</label><input id="scanRegQuantity" type="number" min="1" value="1"></div><div class="field"><label for="scanRegTimeout">Timeout (s)</label><input id="scanRegTimeout" type="number" min="0.05" max="10" step="0.05" value="0.3"></div></div>
+              <button type="button" class="primary" id="scanRegBtn">Scan registers</button><div class="comm-result" id="scanRegResult"></div>
+            </section>
+            <section class="comm-tool">
+              <h2>3. Change device address</h2><p class="hint">Writes the new address to the vendor-specific address register. Verify the register first.</p>
+              <div class="grid2"><div class="field"><label for="setAddrUnit">Current Unit ID</label><input id="setAddrUnit" type="number" min="1" max="247" value="1"></div><div class="field"><label for="setAddrFc">Function</label><input id="setAddrFc" type="number" value="6"></div></div>
+              <div class="grid2"><div class="field"><label for="setAddrRegister">Address register</label><input id="setAddrRegister" type="number" min="0" max="65535" value="0"></div><div class="field"><label for="setAddrValue">New address</label><input id="setAddrValue" type="number" min="1" max="247" value="2"></div></div>
+              <div class="field"><label for="setAddrTimeout">Response timeout (s)</label><input id="setAddrTimeout" type="number" min="0.05" max="10" step="0.05" value="0.3"></div>
+              <button type="button" class="primary" id="setAddrBtn">Send address change</button><div class="comm-result" id="setAddrResult"></div>
+            </section>
+            <section class="comm-tool">
+              <h2>4. Repeat send + log</h2><p class="hint">Repeat a Modbus, HEX or text command and keep the latest 200 results.</p>
+              <div class="field"><label for="repeatAction">Command type</label><select id="repeatAction"><option value="modbus">Modbus</option><option value="hex">HEX (Raw only)</option><option value="text">UTF-8 text (Raw only)</option></select></div>
+              <div id="repeatModbus"><div class="grid2"><div class="field"><label for="repeatUnit">Unit ID</label><input id="repeatUnit" type="number" value="1"></div><div class="field"><label for="repeatFunction">Function</label><input id="repeatFunction" type="number" value="3"></div></div><div class="grid2"><div class="field"><label for="repeatAddress">Start address</label><input id="repeatAddress" type="number" value="0"></div><div class="field"><label for="repeatQuantity">Quantity/value</label><input id="repeatQuantity" type="number" value="1"></div></div></div>
+              <div class="field" id="repeatRaw" hidden><label for="repeatData">Data</label><textarea id="repeatData" placeholder="HEX byte pairs or text"></textarea></div>
+              <div class="grid2"><div class="field"><label for="repeatInterval">Interval (s, 0 = once)</label><input id="repeatInterval" type="number" min="0" step="0.1" value="2"></div><div class="field"><label for="repeatTimeout">Response timeout (s)</label><input id="repeatTimeout" type="number" min="0.05" max="10" step="0.05" value="0.3"></div></div>
+              <div class="repeat-actions"><button type="button" class="primary" id="repeatBtn">Start</button><button type="button" id="repeatClearBtn">Clear log</button></div>
+              <div class="repeat-log"><table><thead><tr><th>Time</th><th>TX</th><th>RX / error</th></tr></thead><tbody id="repeatRows"></tbody></table></div>
+            </section>
+          </div>
+          <div class="section-heading">Advanced command</div>
           <div class="grid2">
             <div class="field"><label for="commAction">Action</label><select id="commAction"><option value="listen">Listen (Raw only)</option><option value="modbus">Modbus command (custom function)</option><option value="hex">Send HEX (Raw only)</option><option value="text">Send UTF-8 text (Raw only)</option></select></div>
-            <div class="field"><label for="commDuration">Capture duration (seconds)</label><input id="commDuration" type="number" min="1" max="10" value="2"></div>
+            <div class="field"><label for="commDuration">Capture duration (seconds)</label><input id="commDuration" type="number" min="0.05" max="10" step="0.05" value="2"></div>
           </div>
           <div id="commModbus" hidden>
             <div class="grid2"><div class="field"><label for="commUnit">Unit ID</label><input id="commUnit" type="number" min="1" max="247" value="1"></div><div class="field"><label for="commFunction">Function</label><input id="commFunction" type="number" min="1" max="127" value="3" list="functionHints"><datalist id="functionHints"><option value="3">Read holding</option><option value="4">Read input</option><option value="5">Write coil</option><option value="6">Write register</option><option value="15">Write coils</option><option value="16">Write registers</option><option value="66">PZEM reset energy (0x42)</option></datalist></div></div>
@@ -448,6 +499,123 @@
       } catch(e) { $('commOutput').textContent = 'Error: ' + e.message; }
       finally { $('commRun').disabled = false; }
     });
+    $('communicationForm').addEventListener('keydown', event => {
+      if (event.key === 'Enter' && event.target.closest('.comm-tools')) event.preventDefault();
+    });
+
+    function selectedCommGateway() {
+      const gateway = state.ports.find(port => port.id === $('commGateway').value);
+      if (!gateway) throw Error('Select a gateway first');
+      if (!gateway.enabled || gateway.runtime.status !== 'running') throw Error('Selected gateway must be enabled and running');
+      return gateway;
+    }
+    async function communicate(payload) {
+      const gateway = selectedCommGateway();
+      const result = await api('/api/ports/' + encodeURIComponent(gateway.id) + '/communication', {method:'POST', body:JSON.stringify(payload)});
+      return {gateway, result};
+    }
+    function resultBytes(result) {
+      return result.rx.flatMap(chunk => chunk.hex.split(/\s+/).filter(Boolean).map(value => parseInt(value, 16)));
+    }
+    function modbusCrc(bytes) {
+      let crc = 0xffff;
+      for (const byte of bytes) {
+        crc ^= byte;
+        for (let bit = 0; bit < 8; bit++) crc = (crc & 1) ? ((crc >> 1) ^ 0xa001) : (crc >> 1);
+      }
+      return crc;
+    }
+    function findModbusReply(result, gateway, unit, func) {
+      const bytes = resultBytes(result);
+      if (gateway.mode === 'modbus') {
+        for (let i = 0; i + 8 <= bytes.length; i++) {
+          const length = (bytes[i + 4] << 8) | bytes[i + 5];
+          const end = i + 6 + length;
+          if (bytes[i + 2] !== 0 || bytes[i + 3] !== 0 || end > bytes.length || bytes[i + 6] !== unit) continue;
+          const responseFunc = bytes[i + 7];
+          if (responseFunc === func || responseFunc === (func | 0x80)) return {hex: bytes.slice(i, end).map(x => x.toString(16).padStart(2, '0')).join(' '), exception: responseFunc !== func};
+        }
+        return null;
+      }
+      for (let i = 0; i + 5 <= bytes.length; i++) {
+        if (bytes[i] !== unit) continue;
+        const responseFunc = bytes[i + 1];
+        if (responseFunc !== func && responseFunc !== (func | 0x80)) continue;
+        let length = responseFunc & 0x80 ? 5 : ([1,2,3,4].includes(func) ? 5 + bytes[i + 2] : 8);
+        if (i + length > bytes.length) continue;
+        const frame = bytes.slice(i, i + length); const expected = frame[length - 2] | (frame[length - 1] << 8);
+        if (modbusCrc(frame.slice(0, -2)) === expected) return {hex: frame.map(x => x.toString(16).padStart(2, '0')).join(' '), exception: responseFunc !== func};
+      }
+      return null;
+    }
+    const modbusPayload = (unit, func, address, amount, duration) => ({action:'modbus', unit, function:func, address, quantity:amount, value:amount, duration});
+    function saveToolResults() {
+      try { localStorage.setItem('usb_gateway_tools_v1', JSON.stringify({units:$('scanUnitResult').innerHTML, registers:$('scanRegResult').innerHTML, address:$('setAddrResult').innerHTML, repeat:$('repeatRows').innerHTML})); } catch (_) {}
+    }
+    function restoreToolResults() {
+      try { const saved = JSON.parse(localStorage.getItem('usb_gateway_tools_v1') || '{}'); $('scanUnitResult').innerHTML = saved.units || ''; $('scanRegResult').innerHTML = saved.registers || ''; $('setAddrResult').innerHTML = saved.address || ''; $('repeatRows').innerHTML = saved.repeat || ''; } catch (_) {}
+    }
+
+    $('scanUnitBtn').onclick = async () => {
+      const button = $('scanUnitBtn'); const output = $('scanUnitResult');
+      const start = Number($('scanUnitStart').value), end = Number($('scanUnitEnd').value), func = Number($('scanUnitFc').value), address = Number($('scanUnitAddress').value), quantity = Number($('scanUnitQuantity').value), duration = Number($('scanUnitTimeout').value);
+      if (start < 1 || end > 247 || end < start) { toast('Unit ID range must be within 1-247', true); return; }
+      button.disabled = true; output.textContent = 'Scanning...'; const found = [];
+      try {
+        for (let unit = start; unit <= end; unit++) {
+          button.textContent = `Scanning ${unit}/${end}`;
+          const {gateway, result} = await communicate(modbusPayload(unit, func, address, quantity, duration));
+          const reply = findModbusReply(result, gateway, unit, func);
+          if (reply) found.push({unit, ...reply});
+        }
+        output.innerHTML = found.length ? `<div>Found ${found.length}/${end-start+1} Unit IDs</div><table><thead><tr><th>Unit ID</th><th>Response</th></tr></thead><tbody>${found.map(item => `<tr><td>${item.unit}${item.exception ? ' (exception)' : ''}</td><td>${item.hex}</td></tr>`).join('')}</tbody></table>` : `No responding Unit IDs found (${start}-${end}).`;
+      } catch (e) { output.textContent = `Error: ${e.message}`; }
+      finally { button.disabled = false; button.textContent = 'Scan Unit IDs'; saveToolResults(); }
+    };
+    $('scanRegBtn').onclick = async () => {
+      const button = $('scanRegBtn'); const output = $('scanRegResult');
+      const unit = Number($('scanRegUnit').value), functions = $('scanRegFcs').value.split(',').map(x => Number(x.trim())).filter(x => Number.isInteger(x) && x > 0 && x < 128), start = Number($('scanRegStart').value), end = Number($('scanRegEnd').value), quantity = Number($('scanRegQuantity').value), duration = Number($('scanRegTimeout').value);
+      if (!functions.length || start < 0 || end < start || end - start > 500) { toast('Check functions and address range (maximum 501 addresses)', true); return; }
+      button.disabled = true; output.textContent = 'Scanning...'; const found = []; const total = (end-start+1)*functions.length; let current = 0;
+      try {
+        for (const func of functions) for (let address = start; address <= end; address++) {
+          button.textContent = `Scanning ${++current}/${total}`;
+          const {gateway, result} = await communicate(modbusPayload(unit, func, address, quantity, duration));
+          const reply = findModbusReply(result, gateway, unit, func);
+          if (reply && !reply.exception) found.push({func, address, hex:reply.hex});
+        }
+        output.innerHTML = found.length ? `<div>Found ${found.length}/${total} valid replies</div><table><thead><tr><th>FC</th><th>Address</th><th>Response</th></tr></thead><tbody>${found.map(item => `<tr><td>${item.func}</td><td>${item.address}</td><td>${item.hex}</td></tr>`).join('')}</tbody></table>` : `No valid registers found (${total} probes).`;
+      } catch (e) { output.textContent = `Error: ${e.message}`; }
+      finally { button.disabled = false; button.textContent = 'Scan registers'; saveToolResults(); }
+    };
+    $('setAddrBtn').onclick = async () => {
+      if (!confirm('This writes to the physical device. Continue only if the address register and value are correct.')) return;
+      const button = $('setAddrBtn'); const output = $('setAddrResult'); const unit = Number($('setAddrUnit').value), func = Number($('setAddrFc').value), address = Number($('setAddrRegister').value), value = Number($('setAddrValue').value), duration = Number($('setAddrTimeout').value);
+      let payload = modbusPayload(unit, func, address, value, duration);
+      if (func === 16) payload = {...payload, custom_body:true, body:[address>>8,address&255,0,1,2,value>>8,value&255].map(x => x.toString(16).padStart(2,'0')).join(' ')};
+      button.disabled = true; output.textContent = 'Sending...';
+      try { const {gateway, result} = await communicate(payload); const reply = findModbusReply(result, gateway, unit, func); output.textContent = `TX: ${result.tx_hex || '-'}\nRX: ${reply?.hex || '(no valid response)'}${result.error ? '\nError: '+result.error : ''}`; }
+      catch (e) { output.textContent = `Error: ${e.message}`; }
+      finally { button.disabled = false; saveToolResults(); }
+    };
+    $('repeatAction').onchange = () => { const raw = $('repeatAction').value !== 'modbus'; $('repeatModbus').hidden = raw; $('repeatRaw').hidden = !raw; };
+    let repeatTimer = null; let repeatRunning = false;
+    async function repeatOnce() {
+      const action = $('repeatAction').value, duration = Number($('repeatTimeout').value); let payload;
+      if (action === 'modbus') payload = modbusPayload(Number($('repeatUnit').value), Number($('repeatFunction').value), Number($('repeatAddress').value), Number($('repeatQuantity').value), duration);
+      else payload = {action, data:$('repeatData').value, duration};
+      const row = document.createElement('tr'); const timestamp = new Date().toLocaleTimeString();
+      try { const {result} = await communicate(payload); const rx = result.rx.map(chunk => chunk.hex).join(' ') || '(no response)'; row.innerHTML = `<td>${timestamp}</td><td>${escapeHtml(result.tx_hex || '-')}</td><td>${escapeHtml(result.error || rx)}</td>`; }
+      catch (e) { row.innerHTML = `<td>${timestamp}</td><td>-</td><td>${escapeHtml(e.message)}</td>`; }
+      $('repeatRows').prepend(row); while ($('repeatRows').children.length > 200) $('repeatRows').lastElementChild.remove(); saveToolResults();
+      if (repeatRunning) repeatTimer = setTimeout(repeatOnce, Math.max(100, Number($('repeatInterval').value) * 1000));
+    }
+    $('repeatBtn').onclick = () => {
+      if (repeatRunning) { repeatRunning = false; clearTimeout(repeatTimer); $('repeatBtn').textContent = 'Start'; return; }
+      const interval = Number($('repeatInterval').value); repeatRunning = interval > 0; $('repeatBtn').textContent = repeatRunning ? 'Stop' : 'Start'; repeatOnce();
+    };
+    $('repeatClearBtn').onclick = () => { $('repeatRows').innerHTML = ''; saveToolResults(); };
+    restoreToolResults();
     const presetFields = ['commGateway','commAction','commDuration','commData','commUnit','commFunction','commAddress','commQuantity','commValue','commBody'];
     let commandPresets = [];
     async function loadPresets(selected = '') {
