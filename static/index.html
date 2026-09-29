@@ -41,6 +41,17 @@
     button:disabled { opacity: .5; cursor: not-allowed; }
     [hidden] { display: none !important; }
     .tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+    .log-controls { flex-wrap: wrap; align-items: end; }
+    .log-controls label { min-width: 120px; flex: 1; margin: 0; }
+    .log-controls .log-live { display: flex; align-items: center; gap: 6px; height: 36px; flex: 0 0 auto; }
+    .log-live input { width: 16px; height: 16px; }
+    .diagnostic-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 10px; margin-bottom: 16px; }
+    .diagnostic-card { border: 1px solid var(--line); border-radius: 5px; padding: 12px; overflow-wrap: anywhere; }
+    .diagnostic-card p { margin: 6px 0 0; font-size: 12px; }
+    .diagnostic-card code { font-size: 11px; }
+    #diagnosticHints { color: var(--warn); font-size: 13px; }
+    #logsStatus { font-size: 12px; color: var(--muted); }
+    #logsOutput { border-radius: 5px; }
     .layout { display: grid; grid-template-columns: minmax(280px, 340px) minmax(0, 1fr); gap: 16px; align-items: start; }
     .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
     .panel-title { padding: 12px 14px; border-bottom: 1px solid var(--line); font-weight: 700; }
@@ -146,7 +157,24 @@
       <button type="button" id="refreshBtn">Refresh</button>
       <button type="button" class="primary" id="newBtn">Add gateway</button>
     </div>
-    <nav class="tabs" aria-label="Gateway views"><button id="gatewaysTab" class="primary">Gateways</button><button id="communicationTab">Communication</button></nav>
+    <nav class="tabs" aria-label="Gateway views"><button id="gatewaysTab" class="primary">Gateways</button><button id="communicationTab">Communication</button><button id="logsTab">Logs</button></nav>
+    <section id="logsPanel" class="panel" hidden>
+      <div class="panel-title">Logs &amp; USB diagnostics</div>
+      <div style="padding:16px">
+        <div class="toolbar log-controls">
+          <label>Gateway <select id="logsGateway"><option value="">All gateways + system</option></select></label>
+          <label>Level <select id="logsLevel"><option value="">All levels</option><option>error</option><option>warning</option><option>info</option></select></label>
+          <label>Search <input id="logsSearch" placeholder="Search messages"></label>
+          <label class="log-live"><input type="checkbox" id="logsAuto" checked> Live (4s)</label>
+          <button id="logsRefresh">Refresh logs</button><button id="logsDownload">Download debug report</button>
+        </div>
+        <div id="diagnosticCards" class="diagnostic-cards"></div>
+        <div id="diagnosticHints"></div>
+        <p id="logsStatus" role="status">Latest 500 matching events. History is bounded and retained across restarts.</p>
+        <pre id="logsOutput" style="max-height:420px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere" aria-label="Gateway event log"></pre>
+        <details><summary>Current USB paths, mounts and diagnostic hints</summary><pre id="usbDiagnostics" style="max-height:360px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere"></pre></details>
+      </div>
+    </section>
       <section id="communicationPanel" class="panel" hidden>
         <div class="panel-title">Communication</div>
         <form id="communicationForm">
@@ -373,7 +401,7 @@
     function renderPorts() {
       renderCommunicationGateways();
       $('countTotal').textContent = `${state.ports.length} gateway`;
-      $('countRunning').textContent = `${state.ports.filter(p => p.runtime.status === 'running').length} running`;
+      $('countRunning').textContent = `${state.ports.filter(p => p.runtime.status === 'running' && p.device_present !== false).length} running`;
       $('countDevices').textContent = `${state.devices.filter(d => d.present).length} USB`;
       $('emptyState').style.display = state.ports.length ? 'none' : 'block';
       $('portRows').innerHTML = state.ports.map(p => {
@@ -381,7 +409,7 @@
         const mode = p.mode === 'modbus' ? 'Modbus TCP → RTU' : 'Raw TCP ↔ UART';
         const missing = p.device_present === false;
         const status = missing ? 'disconnected' : rt.status;
-        const message = missing ? 'USB disconnected — configuration retained' : rt.message;
+        const message = missing ? `USB path unavailable — ${rt.message || rt.status}. See Logs for diagnostics.` : rt.message;
         return `<tr data-id="${p.id}" class="${missing ? 'disconnected' : ''}">
           <td class="drag-cell"><button type="button" class="drag-handle" title="Drag to reorder" aria-label="Drag ${escapeHtml(p.name)} to reorder">&#8942;&#8942;</button></td>
           <td><div class="name">${escapeHtml(p.name)}</div>${p.notes ? `<div class="notes">${escapeHtml(p.notes)}</div>` : ''}<div class="sub" title="${escapeHtml(p.device)}">${escapeHtml(p.device)}</div></td>
@@ -469,11 +497,59 @@
     $('newBtn').addEventListener('click', resetForm); $('refreshBtn').addEventListener('click', refresh);
     $('closeLogBtn').addEventListener('click', () => $('logDialog').close());
     function showTab(communication) {
+      $('logsPanel').hidden = true; $('logsTab').classList.remove('primary');
       $('communicationPanel').hidden = !communication; $('gatewaysPanel').hidden = communication;
       $('communicationTab').classList.toggle('primary', communication); $('gatewaysTab').classList.toggle('primary', !communication);
     }
     $('gatewaysTab').onclick = () => showTab(false);
     $('communicationTab').onclick = () => showTab(true);
+    let logEntries = [], logsBusy = false;
+    function renderLogEntries() {
+      const search = $('logsSearch').value.toLowerCase();
+      const output = $('logsOutput');
+      const atBottom = output.scrollTop + output.clientHeight >= output.scrollHeight - 30;
+      $('logsOutput').textContent = logEntries.map(e => `${e.time} [${e.level}] [${e.gateway_name || 'system'}] ${e.message}`)
+        .filter(line => line.toLowerCase().includes(search)).join('\n') || 'No matching events.';
+      if (atBottom) output.scrollTop = output.scrollHeight;
+    }
+    async function refreshLogs() {
+      if (logsBusy) return;
+      logsBusy = true;
+      try {
+        const selected = $('logsGateway').value;
+        const [data, diagnostics, ports] = await Promise.all([
+          api('/api/logs?' + new URLSearchParams({limit:'500', gateway_id:selected, level:$('logsLevel').value})),
+          api('/api/diagnostics'), api('/api/ports')]);
+        const choices = new Map(ports.ports.map(p => [p.id, p.name]));
+        for (const e of data.logs) if (e.gateway_id) choices.set(e.gateway_id, e.gateway_name || e.gateway_id);
+        if (selected && !choices.has(selected)) choices.set(selected, selected);
+        $('logsGateway').innerHTML = '<option value="">All gateways + system</option>' + [...choices].map(([id,name]) => `<option value="${escapeHtml(id)}">${escapeHtml(name)}</option>`).join('');
+        $('logsGateway').value = selected;
+        logEntries = data.logs; renderLogEntries();
+        const reasons = {path_resolves:'USB path resolves', resolved_via_sysfs:'Alias missing in container — re-anchored via sysfs', topology_alias_missing:'USB not plugged in at this topology', symlink_target_missing:'Serial target missing'};
+        $('diagnosticCards').innerHTML = diagnostics.bindings.map(b => `<div class="diagnostic-card ${b.present ? '' : 'waiting'}"><strong>${escapeHtml(b.name)}</strong><p>${escapeHtml(reasons[b.reason] || b.reason)}</p><p><code>${escapeHtml(b.path)}</code></p>${b.live_tty ? `<p>Live tty: <code>${escapeHtml(b.live_tty)}</code></p>` : b.symlink ? `<p>Target: <code>${escapeHtml(b.target)}</code></p>` : ''}</div>`).join('') || '<p>No saved USB bindings.</p>';
+        $('diagnosticHints').replaceChildren(...diagnostics.hints.map(hint => { const p = document.createElement('p'); p.textContent = hint; return p; }));
+        $('usbDiagnostics').textContent = JSON.stringify(diagnostics, null, 2);
+        $('logsStatus').textContent = data.persistence_error ? `Log storage error: ${data.persistence_error}. In-memory events remain available.` : `Updated ${new Date().toLocaleTimeString()} · ${data.logs.length} events · history retained in /config/events.jsonl (rotating)`;
+      } catch(e) { $('logsStatus').textContent = 'Unable to load logs: ' + e.message; }
+      finally { logsBusy = false; }
+    }
+    $('logsTab').onclick = () => {
+      showTab(false); $('gatewaysPanel').hidden = true; $('gatewaysTab').classList.remove('primary');
+      $('logsPanel').hidden = false; $('logsTab').classList.add('primary'); refreshLogs();
+    };
+    $('logsRefresh').onclick = refreshLogs;
+    $('logsGateway').onchange = refreshLogs; $('logsLevel').onchange = refreshLogs;
+    $('logsSearch').oninput = renderLogEntries;
+    $('logsDownload').onclick = async () => {
+      try {
+        const [health, ports, diagnostics, events] = await Promise.all([api('/api/health'), api('/api/ports'), api('/api/diagnostics'), api('/api/logs?limit=2000')]);
+        const blob = new Blob([JSON.stringify({captured_at:new Date().toISOString(), health, ports, diagnostics, ...events}, null, 2)], {type:'application/json'});
+        const url = URL.createObjectURL(blob), link = document.createElement('a');
+        link.href = url; link.download = 'usb-gateway-debug.json'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+      } catch(e) { toast('Unable to download report: ' + e.message, true); }
+    };
+    setInterval(() => { if (!$('logsPanel').hidden && $('logsAuto').checked) refreshLogs(); }, 4000);
     $('newBtn').addEventListener('click', () => showTab(false));
     $('commAction').onchange = () => {
       const action = $('commAction').value;

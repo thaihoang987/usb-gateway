@@ -84,8 +84,15 @@ class ApiHandler(BaseHTTPRequestHandler):
                 self._json(HTTPStatus.OK, {"presets": self.manager.presets.list()})
             elif parts == ["api", "devices"]:
                 self._json(HTTPStatus.OK, {"devices": self.manager.devices()})
+            elif parts == ["api", "logs"]:
+                limit = max(1, min(int(query.get('limit', ['500'])[0]), 2000))
+                self._json(HTTPStatus.OK, {'logs': self.manager.events.read(
+                    limit, query.get('gateway_id', [''])[0], query.get('level', [''])[0]),
+                    'persistence_error': self.manager.events.persistence_error})
+            elif parts == ["api", "diagnostics"]:
+                self._json(HTTPStatus.OK, self.manager.diagnostics())
             elif len(parts) == 4 and parts[:2] == ["api", "ports"] and parts[3] == "logs":
-                limit = min(int(query.get("limit", ["200"])[0]), 500)
+                limit = max(1, min(int(query.get("limit", ["200"])[0]), 500))
                 self._json(HTTPStatus.OK, {"logs": self.manager.logs(parts[2], limit)})
             elif parts and parts[0] == "api":
                 self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})

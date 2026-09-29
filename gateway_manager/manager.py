@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import json
 import os
 import socket
 import threading
@@ -8,10 +9,12 @@ import time
 from typing import Any
 
 from .config import ConfigError, ConfigStore, normalize_port, validate_ports
-from .devices import scan_devices
+from .devices import find_topology_tty, scan_devices
 from .communication import exchange
 from .presets import PresetStore
 from .workers import GatewayWorker, create_worker
+from .eventlog import EventLog
+from .diagnostics import usb_diagnostics
 
 
 class GatewayManager:
@@ -22,12 +25,55 @@ class GatewayManager:
         self.ports = store.load()
         self.workers: dict[str, GatewayWorker] = {}
         self.metrics: dict[str, dict[str, int]] = {}
+        self.events = EventLog(store.path.with_name('events.jsonl'))
+        self._monitor_stop = threading.Event()
+        self._monitor_thread = None
 
     def start(self) -> None:
         with self.lock:
             self._reconcile()
+            if self._monitor_thread is None or not self._monitor_thread.is_alive():
+                self._monitor_stop.clear()
+                self.events.emit('info', 'Gateway manager started')
+                self._monitor_thread = threading.Thread(target=self._monitor_usb, daemon=True)
+                self._monitor_thread.start()
+
+    def diagnostics(self):
+        with self.lock:
+            ports = copy.deepcopy(self.ports)
+        result = usb_diagnostics(ports)
+        result['log_persistence_error'] = self.events.persistence_error
+        return result
+
+    def _monitor_usb(self):
+        previous = None
+        while not self._monitor_stop.is_set():
+            try:
+                snapshot = self.diagnostics()
+                summary = {
+                    'bindings': {b['name']: 'ok' if b['present'] else b['reason'] for b in snapshot['bindings']},
+                    'devices': sorted(f"{d.get('real_path')}@{d.get('usb_port', '?')}"
+                                      f"{'' if d.get('by_path') else ' (no by-path)'}" for d in snapshot['devices']),
+                    'stale_serial_mount': snapshot['stale_serial_mount'],
+                }
+                signature = json.dumps(summary, sort_keys=True, ensure_ascii=False)
+                if signature != previous:
+                    bad = snapshot['stale_serial_mount'] or any(not b['present'] for b in snapshot['bindings'])
+                    self.events.emit('warning' if bad else 'info', 'USB inventory changed: ' + signature)
+                    if snapshot['stale_serial_mount']:
+                        self.events.emit('error', snapshot['hints'][0])
+                    previous = signature
+            except Exception as exc:
+                message = str(exc)
+                if previous != message:
+                    self.events.emit('error', 'USB scan failed: ' + message)
+                    previous = message
+            self._monitor_stop.wait(4)
 
     def stop(self) -> None:
+        self._monitor_stop.set()
+        if self._monitor_thread:
+            self._monitor_thread.join(timeout=5)
         with self.lock:
             workers = list(self.workers.values())
             self.workers.clear()
@@ -50,6 +96,7 @@ class GatewayManager:
             if port_id not in self.workers:
                 metrics = self.metrics.get(port_id)
                 worker = create_worker(config, metrics) if metrics else create_worker(config)
+                worker.event_sink = self.events.emit
                 self.workers[port_id] = worker
                 worker.start()
 
@@ -64,7 +111,7 @@ class GatewayManager:
             result: list[dict[str, Any]] = []
             for port in self.ports:
                 item = copy.deepcopy(port)
-                item["device_present"] = os.path.exists(port["device"])
+                item["device_present"] = os.path.exists(port["device"]) or find_topology_tty(port["device"]) is not None
                 worker = self.workers.get(port["id"])
                 item["runtime"] = worker.snapshot() if worker else {
                     "status": "disabled",
@@ -155,8 +202,7 @@ class GatewayManager:
     def logs(self, port_id: str, limit: int = 200) -> list[dict[str, str]]:
         with self.lock:
             self.get_port(port_id)
-            worker = self.workers.get(port_id)
-            return worker.get_logs(limit) if worker else []
+            return self.events.read(limit, gateway_id=port_id)
 
     def devices(self) -> list[dict[str, Any]]:
         with self.lock:

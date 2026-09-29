@@ -11,4 +11,4 @@ services:
       CONFIG_PATH: /config/config.json
     volumes:
       - /mnt/user/appdata/usb-gateway:/config
-      - /dev/serial:/dev/serial:ro
+      - /dev:/dev

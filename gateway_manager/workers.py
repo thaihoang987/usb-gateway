@@ -12,7 +12,7 @@ from typing import Any
 
 import serial
 
-from .hotplug import ensure_serial_node
+from .hotplug import resolve_serial_device
 
 
 def _now() -> str:
@@ -36,6 +36,8 @@ class GatewayWorker:
         self.rx_count = metrics.get("rx_count", 0)
         self.logs: collections.deque[dict[str, str]] = collections.deque(maxlen=500)
         self._state_lock = threading.Lock()
+        self.event_sink = None
+        self.active_device: str | None = None
 
     def log(self, level: str, message: str) -> None:
         clean = message.rstrip()
@@ -43,13 +45,19 @@ class GatewayWorker:
             return
         with self._state_lock:
             self.logs.append({"time": _now(), "level": level, "message": clean})
+        if self.event_sink:
+            self.event_sink(level, clean, self.config['id'], self.config['name'])
 
     def set_status(self, status: str, message: str = "") -> None:
         with self._state_lock:
+            changed = (self.status, self.message) != (status, message)
             self.status = status
             self.message = message
             if status == "running" and self.started_at is None:
                 self.started_at = _now()
+        if changed:
+            self.log('error' if status == 'error' else 'warning' if status == 'waiting' else 'info',
+                     f'State {status}: {message}')
 
     def start(self) -> None:
         if self.thread and self.thread.is_alive():
@@ -85,22 +93,32 @@ class GatewayWorker:
             self.log("error", f"Unhandled worker error: {exc}")
             self.set_status("error", str(exc))
 
-    def _device_ready(self) -> bool:
+    def _resolve_device(self) -> str | None:
+        return resolve_serial_device(self.config["device"])
+
+    def _device_ready(self) -> str | None:
         device = self.config["device"]
         try:
-            was_present = os.path.exists(device)
-            ready = ensure_serial_node(device)
-            if ready:
-                if not was_present:
-                    self.log("info", f"Restored serial device for topology {device}")
-                return True
+            resolved = self._resolve_device()
+            if resolved:
+                if resolved != self.active_device:
+                    self.log("info", f"USB topology {device} -> {resolved}")
+                    self.active_device = resolved
+                return resolved
             message = f"Waiting for USB topology {device}"
         except (OSError, ValueError) as exc:
             message = f"USB topology unavailable: {device}: {exc}"
         if self.message != message:
             self.log("warning", message)
         self.set_status("waiting", message)
-        return False
+        return None
+
+    def _device_changed(self) -> bool:
+        """True when the topology now maps to another tty or is gone."""
+        try:
+            return self._resolve_device() != self.active_device
+        except (OSError, ValueError):
+            return True
 
     def run(self) -> None:
         raise NotImplementedError
@@ -160,7 +178,7 @@ class MbusdWorker(GatewayWorker):
             "-v",
             str(cfg["log_level"]),
             "-p",
-            cfg["device"],
+            self.active_device or cfg["device"],
             "-s",
             str(cfg["baud"]),
             "-m",
@@ -286,7 +304,9 @@ class MbusdWorker(GatewayWorker):
         if process.stdout is None:
             return
         for line in process.stdout:
-            self.log("info", line)
+            lowered = line.lower()
+            level = 'error' if any(word in lowered for word in ("can't open", 'error', 'failed')) else 'info'
+            self.log(level, line)
 
     def run(self) -> None:
         while not self.stop_event.is_set():
@@ -344,9 +364,24 @@ class MbusdWorker(GatewayWorker):
                 continue
             self.set_status("running", f"TCP :{self.config['tcp_port']}")
 
+            # mbusd keeps reopening its original tty path forever; restart it
+            # when the USB topology re-anchors to another tty or disappears.
+            ticks = 0
             while not self.stop_event.wait(0.5):
                 if self.process.poll() is not None:
                     break
+                ticks += 1
+                if ticks % 4 == 0 and self._device_changed():
+                    self.log("warning", f"USB topology changed for {self.config['device']}; restarting mbusd")
+                    break
+
+            if not self.stop_event.is_set() and self.process.poll() is None:
+                self.process.terminate()
+                try:
+                    self.process.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    self.process.kill()
+                    self.process.wait(timeout=2)
 
             if self.stop_event.is_set() and self.process.poll() is None:
                 self.process.terminate()
@@ -401,7 +436,7 @@ class RawSerialWorker(GatewayWorker):
     def _open_serial(self) -> serial.Serial:
         cfg = self.config
         port = serial.Serial()
-        port.port = cfg["device"]
+        port.port = self.active_device or cfg["device"]
         port.baudrate = cfg["baud"]
         port.bytesize = cfg["data_bits"]
         port.parity = cfg["parity"]
@@ -470,7 +505,7 @@ class RawSerialWorker(GatewayWorker):
         self.set_status("running", f"TCP :{self.config['tcp_port']}")
         self.log(
             "info",
-            f"Raw bridge listening on :{self.config['tcp_port']} -> {self.config['device']}",
+            f"Raw bridge listening on :{self.config['tcp_port']} -> {self.config['device']} ({self.active_device})",
         )
 
         try:

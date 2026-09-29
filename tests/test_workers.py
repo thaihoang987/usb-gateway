@@ -38,6 +38,26 @@ class WorkerTests(unittest.TestCase):
         internal = worker._command("127.0.0.1", 19001)
         self.assertEqual(internal[internal.index("-A") + 1], "127.0.0.1")
         self.assertEqual(internal[internal.index("-P") + 1], "19001")
+
+    def test_reanchors_to_new_tty_after_replug(self):
+        config = normalize_port(
+            {"name": "relay", "mode": "modbus", "device": "/dev/serial/by-path/relay", "tcp_port": 8891},
+            "relay",
+        )
+        worker = workers.MbusdWorker(config)
+        live = {"tty": "/dev/ttyUSB0"}
+        worker._resolve_device = lambda: live["tty"]
+        self.assertEqual(worker._device_ready(), "/dev/ttyUSB0")
+        command = worker._command()
+        self.assertEqual(command[command.index("-p") + 1], "/dev/ttyUSB0")
+        self.assertFalse(worker._device_changed())
+        live["tty"] = "/dev/ttyUSB3"
+        self.assertTrue(worker._device_changed())
+        self.assertEqual(worker._device_ready(), "/dev/ttyUSB3")
+        live["tty"] = None
+        self.assertTrue(worker._device_changed())
+        self.assertIsNone(worker._device_ready())
+        self.assertEqual(worker.status, "waiting")
         self.assertTrue(worker.snapshot()["metrics_available"])
 
     def test_raw_worker_sets_control_lines_before_open(self):

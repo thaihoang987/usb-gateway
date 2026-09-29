@@ -116,6 +116,12 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for implementation details.
 
 ## USB reconnect in Docker
 
-With the existing privileged container and read-only /dev/serial mount, workers recreate a missing ttyUSB/ttyACM device node in the container’s private /dev using the configured by-path symlink and live USB serial metadata from sysfs. Only serial majors 188/166 are accepted; existing nodes are never replaced. No whole-host /dev mount is needed. Waiting and node restoration are logged. The USB must return at the saved topology. Update the container image to receive this fix; TCP clients must reconnect after interruption.
+Each gateway is bound to its udev `by-path` topology name. Workers resolve that name through sysfs (`/sys/class/tty`) on every (re)connect, not through the `/dev/serial` symlink, so they re-anchor automatically when a USB re-plug renumbers the tty (for example `ttyUSB0` -> `ttyUSB3`). A missing tty node in the container's private `/dev` is recreated from sysfs major:minor (serial majors 188/166 only, existing files are never replaced). mbusd is restarted when its topology moves to another tty.
+
+Mapping host `/dev` to `/dev` is recommended. When every USB serial device drops at once (hub reset, EMI), udev deletes `/dev/serial` and creates a new directory; a bind mount of only `/dev/serial` keeps pointing at the deleted directory. Gateways still recover through sysfs, and the Logs tab reports the stale mount (`/dev/serial` link count 0).
+
+The **Logs** tab shows a bounded event history (`/config/events.jsonl`, rotated at 2 MiB, kept across restarts), USB inventory changes, per-gateway path diagnostics and a downloadable debug report.
+
+The USB must return at the saved topology. TCP clients must reconnect after interruption.
 
 Communication accepts function codes 1–127 in decimal, with an optional custom HEX body after the function byte. FC05/06 support address/value entry. Other functions use the HEX body; CRC or MBAP is added for the gateway mode. Named form templates are persisted in /config/communication-presets.json; loading a template never sends it. Use Run to send after reviewing the selected gateway and values.

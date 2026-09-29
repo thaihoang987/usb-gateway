@@ -53,7 +53,7 @@ class ApiTests(unittest.TestCase):
         status, health = self.request("/api/health")
         self.assertEqual(status, 200)
         self.assertTrue(health["ok"])
-        self.assertEqual(health["version"], "0.7.0")
+        self.assertEqual(health["version"], "0.8.0")
 
         payload = {
             "name": "arduino-test",
@@ -98,6 +98,28 @@ class ApiTests(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError) as caught:
             self.request("/api/ports", "POST", payload)
         self.assertEqual(caught.exception.code, 400)
+
+    def test_logs_and_diagnostics(self):
+        self.manager.events.emit('error', 'lost topology', 'example', 'USB test')
+        _, result = self.request('/api/logs?gateway_id=example&level=error&limit=20')
+        self.assertEqual(result['logs'][0]['message'], 'lost topology')
+        _, result = self.request('/api/logs?level=warning')
+        self.assertEqual(result['logs'], [])
+        _, result = self.request('/api/diagnostics')
+        self.assertIn('/dev/serial/by-path', result['directories'])
+        with self.assertRaises(urllib.error.HTTPError) as caught:
+            self.request('/api/logs?limit=invalid')
+        self.assertEqual(caught.exception.code, 400)
+
+    def test_worker_logs_survive_disable(self):
+        _, created = self.request('/api/ports', 'POST', {
+            'name': 'test', 'mode': 'raw', 'device': '/dev/serial/by-path/test',
+            'baud': 9600, 'tcp_port': 18992, 'enabled': True})
+        port_id = created['port']['id']
+        self.manager.workers[port_id].log('error', 'before disable')
+        self.request(f'/api/ports/{port_id}', 'PUT', {'enabled': False})
+        _, result = self.request(f'/api/ports/{port_id}/logs')
+        self.assertTrue(any(e['message'] == 'before disable' for e in result['logs']))
 
     def test_reorders_ports_and_persists_order(self):
         payload = {

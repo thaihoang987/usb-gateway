@@ -23,7 +23,7 @@
   <DonateLink>https://buymeacoffee.com/leon_bell</DonateLink>
   <Requires>Experimental software. Test with non-critical devices before production use.</Requires>
   <Config Name="Appdata" Target="/config" Default="/mnt/user/appdata/usb-gateway" Mode="rw" Description="Persistent gateway configuration" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/usb-gateway</Config>
-  <Config Name="Serial Directory" Target="/dev/serial" Default="/dev/serial" Mode="ro" Description="USB serial symlinks from by-id and by-path" Type="Path" Display="always" Required="true" Mask="false">/dev/serial</Config>
+  <Config Name="Host /dev" Target="/dev" Default="/dev" Mode="rw" Description="Host /dev so USB serial aliases and tty nodes stay live after USB re-plug (do not map only /dev/serial)" Type="Path" Display="always" Required="true" Mask="false">/dev</Config>
   <Config Name="Web UI Port" Target="WEB_PORT" Default="8098" Mode="" Description="Management Web UI port; the app uses host networking" Type="Variable" Display="always" Required="true" Mask="false">8098</Config>
   <Config Name="Config Path" Target="CONFIG_PATH" Default="/config/config.json" Mode="" Description="Configuration file inside the container" Type="Variable" Display="advanced" Required="true" Mask="false">/config/config.json</Config>
   <TailscaleStateDir/>
