@@ -35,10 +35,12 @@ listener immediately from the UI.
 - Configuration is written atomically to `/config/config.json`.
 - A missing USB leaves its worker in `waiting`; hot-plugging it starts the
   gateway without editing the configuration.
-- Raw gateways report UART TX/RX byte and chunk totals for the lifetime of the
-  container. The counters survive enable/disable and configuration changes,
-  but reset when the container restarts. `mbusd` traffic is not counted because
-  it bypasses the Python worker and requires verbose debug logs to observe.
+- Gateways report TX/RX byte and chunk totals for the lifetime of the container.
+  The counters survive enable/disable and configuration changes, but reset when
+  the container restarts. Raw counters measure UART bytes. Modbus clients connect
+  through a local counting proxy which forwards payloads to an internal `mbusd`
+  listener, allowing accurate TCP traffic and active-client counts without
+  enabling verbose `mbusd` debug logs.
 
 ## Raw UART behavior
 

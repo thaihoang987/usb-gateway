@@ -1,4 +1,6 @@
+import socket
 import sys
+import threading
 import types
 import unittest
 
@@ -33,7 +35,10 @@ class WorkerTests(unittest.TestCase):
         self.assertIn("8E1", command)
         self.assertEqual(command[command.index("-P") + 1], "8891")
         self.assertEqual(command[command.index("-p") + 1], config["device"])
-        self.assertFalse(worker.snapshot()["metrics_available"])
+        internal = worker._command("127.0.0.1", 19001)
+        self.assertEqual(internal[internal.index("-A") + 1], "127.0.0.1")
+        self.assertEqual(internal[internal.index("-P") + 1], "19001")
+        self.assertTrue(worker.snapshot()["metrics_available"])
 
     def test_raw_worker_sets_control_lines_before_open(self):
         events = []
@@ -90,6 +95,65 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual(snapshot["tx_count"], 2)
         self.assertEqual(snapshot["rx_bytes"], 27)
         self.assertEqual(snapshot["rx_count"], 3)
+
+    def test_mbusd_proxy_forwards_and_tracks_clients(self):
+        config = normalize_port(
+            {
+                "name": "rs485",
+                "mode": "modbus",
+                "device": "/dev/serial/by-path/rs485",
+                "baud": 9600,
+                "tcp_port": 8894,
+            },
+            "rs485",
+        )
+        worker = workers.MbusdWorker(config)
+        backend_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        backend_server.bind(("127.0.0.1", 0))
+        backend_server.listen(1)
+        worker.backend_port = backend_server.getsockname()[1]
+        release_backend = threading.Event()
+        backend_received = []
+
+        def serve_backend():
+            connection, _ = backend_server.accept()
+            with connection:
+                backend_received.append(connection.recv(4096))
+                connection.sendall(b"response")
+                release_backend.wait(2)
+
+        backend_thread = threading.Thread(target=serve_backend)
+        backend_thread.start()
+
+        front_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        front_server.bind(("127.0.0.1", 0))
+        front_server.listen(1)
+        external = socket.create_connection(front_server.getsockname())
+        proxy_client, _ = front_server.accept()
+        proxy_thread = threading.Thread(
+            target=worker._proxy_connection, args=(proxy_client, "test-client")
+        )
+        proxy_thread.start()
+
+        try:
+            external.sendall(b"request")
+            self.assertEqual(external.recv(4096), b"response")
+            snapshot = worker.snapshot()
+            self.assertEqual(snapshot["client_count"], 1)
+            self.assertEqual(snapshot["tx_bytes"], 7)
+            self.assertEqual(snapshot["tx_count"], 1)
+            self.assertEqual(snapshot["rx_bytes"], 8)
+            self.assertEqual(snapshot["rx_count"], 1)
+        finally:
+            release_backend.set()
+            external.close()
+            front_server.close()
+            backend_server.close()
+            proxy_thread.join(2)
+            backend_thread.join(2)
+
+        self.assertEqual(backend_received, [b"request"])
+        self.assertEqual(worker.snapshot()["client_count"], 0)
 
 
 if __name__ == "__main__":

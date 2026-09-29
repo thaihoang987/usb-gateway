@@ -83,10 +83,9 @@
     .error { color: var(--danger); background: var(--error-bg); }
     .waiting { color: var(--warn); background: var(--wait-bg); }
     .disabled, .stopped { color: var(--muted); background: #edf0f3; }
-    .actions { display: flex; gap: 5px; white-space: nowrap; }
+    .actions { display: grid; grid-template-columns: repeat(3, max-content); gap: 5px; white-space: nowrap; }
     .actions button { height: 30px; padding: 0 8px; font-size: 12px; }
     .traffic { min-width: 112px; font: 12px/1.55 ui-monospace, monospace; white-space: nowrap; }
-    .traffic-na { color: var(--muted); }
     .drag-cell { width: 42px; padding-right: 2px; }
     .drag-handle { width: 30px; min-width: 30px; height: 34px; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 19px; line-height: 1; letter-spacing: 0; cursor: grab; touch-action: none; user-select: none; }
     .drag-handle:hover { border: 0; background: #edf0f3; color: var(--text); }
@@ -342,9 +341,7 @@
             <span class="switch-track"></span>
           </label></td>
           <td><span class="badge ${escapeHtml(status)}">${escapeHtml(status)}</span><div class="sub" title="${escapeHtml(message)}">${escapeHtml(message)}</div></td>
-          <td>${rt.metrics_available
-            ? `<div class="traffic" title="Raw UART traffic since the container started">TX ${formatBytes(rt.tx_bytes)} · ${rt.tx_count ?? 0}<br>RX ${formatBytes(rt.rx_bytes)} · ${rt.rx_count ?? 0}</div>`
-            : '<span class="traffic-na" title="mbusd traffic is not observable without verbose debug logging">N/A (mbusd)</span>'}</td>
+          <td><div class="traffic" title="Traffic since the container started">TX ${formatBytes(rt.tx_bytes)} · ${rt.tx_count ?? 0}<br>RX ${formatBytes(rt.rx_bytes)} · ${rt.rx_count ?? 0}</div></td>
           <td>${rt.client_count ?? 0}</td>
           <td><div class="actions">
             <button onclick="editPort('${p.id}')">Edit</button>

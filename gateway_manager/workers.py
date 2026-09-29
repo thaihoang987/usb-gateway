@@ -144,13 +144,12 @@ class MbusdWorker(GatewayWorker):
         super().__init__(config, metrics)
         self.binary = binary
         self.process: subprocess.Popen[str] | None = None
+        self.server: socket.socket | None = None
+        self.backend_port: int | None = None
+        self.proxy_connections: set[tuple[socket.socket, socket.socket]] = set()
+        self.proxy_lock = threading.Lock()
 
-    def snapshot(self) -> dict[str, Any]:
-        result = super().snapshot()
-        result["metrics_available"] = False
-        return result
-
-    def _command(self) -> list[str]:
+    def _command(self, listen_address: str | None = None, tcp_port: int | None = None) -> list[str]:
         cfg = self.config
         serial_mode = f"{cfg['data_bits']}{cfg['parity']}{cfg['stop_bits']}"
         return [
@@ -167,9 +166,9 @@ class MbusdWorker(GatewayWorker):
             "-m",
             serial_mode,
             "-A",
-            "0.0.0.0",
+            listen_address or "0.0.0.0",
             "-P",
-            str(cfg["tcp_port"]),
+            str(tcp_port or cfg["tcp_port"]),
             "-C",
             str(cfg["max_connections"]),
             "-N",
@@ -183,9 +182,105 @@ class MbusdWorker(GatewayWorker):
         ]
 
     def _interrupt(self) -> None:
+        server = self.server
+        if server:
+            try:
+                server.close()
+            except OSError:
+                pass
+        self._close_proxy_connections()
         process = self.process
         if process and process.poll() is None:
             process.terminate()
+
+    @staticmethod
+    def _allocate_backend_port() -> int:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            probe.bind(("127.0.0.1", 0))
+            return int(probe.getsockname()[1])
+
+    def _wait_for_backend(self, process: subprocess.Popen[str], timeout: float = 3) -> None:
+        assert self.backend_port is not None
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline and not self.stop_event.is_set():
+            if process.poll() is not None:
+                raise OSError(f"mbusd exited with code {process.returncode}")
+            try:
+                with socket.create_connection(("127.0.0.1", self.backend_port), timeout=0.2):
+                    return
+            except OSError:
+                self.stop_event.wait(0.05)
+        raise OSError("mbusd internal listener did not become ready")
+
+    def _close_proxy_connections(self) -> None:
+        with self.proxy_lock:
+            connections = list(self.proxy_connections)
+            self.proxy_connections.clear()
+            self.client_count = 0
+        for pair in connections:
+            for connection in pair:
+                try:
+                    connection.close()
+                except OSError:
+                    pass
+
+    def _proxy_connection(self, client: socket.socket, peer: str) -> None:
+        backend: socket.socket | None = None
+        registered = False
+        try:
+            assert self.backend_port is not None
+            backend = socket.create_connection(("127.0.0.1", self.backend_port), timeout=2)
+            client.settimeout(None)
+            backend.settimeout(None)
+            with self.proxy_lock:
+                self.proxy_connections.add((client, backend))
+                self.client_count = len(self.proxy_connections)
+                registered = True
+            self.log("info", f"Connected {peer}")
+
+            closed = False
+            while not self.stop_event.is_set() and not closed:
+                readable, _, _ = select.select([client, backend], [], [], 0.3)
+                for source in readable:
+                    data = source.recv(4096)
+                    if not data:
+                        closed = True
+                        break
+                    destination = backend if source is client else client
+                    if source is client:
+                        self.record_tx(len(data))
+                    else:
+                        self.record_rx(len(data))
+                    destination.sendall(data)
+        except OSError as exc:
+            if not self.stop_event.is_set():
+                self.log("warning", f"Proxy connection {peer} closed: {exc}")
+        finally:
+            if registered and backend is not None:
+                with self.proxy_lock:
+                    self.proxy_connections.discard((client, backend))
+                    self.client_count = len(self.proxy_connections)
+            for connection in (client, backend):
+                if connection:
+                    try:
+                        connection.close()
+                    except OSError:
+                        pass
+            self.log("info", f"Disconnected {peer}")
+
+    def _proxy_loop(self) -> None:
+        assert self.server is not None
+        while not self.stop_event.is_set():
+            try:
+                client, address = self.server.accept()
+            except socket.timeout:
+                continue
+            except OSError:
+                break
+            peer = f"{address[0]}:{address[1]}"
+            threading.Thread(
+                target=self._proxy_connection, args=(client, peer), daemon=True
+            ).start()
 
     def _read_output(self, process: subprocess.Popen[str]) -> None:
         if process.stdout is None:
@@ -200,7 +295,8 @@ class MbusdWorker(GatewayWorker):
                 self.stop_event.wait(2)
                 continue
 
-            command = self._command()
+            self.backend_port = self._allocate_backend_port()
+            command = self._command("127.0.0.1", self.backend_port)
             self.log("info", "Starting: " + " ".join(command))
             try:
                 self.process = subprocess.Popen(
@@ -220,6 +316,32 @@ class MbusdWorker(GatewayWorker):
                 target=self._read_output, args=(self.process,), daemon=True
             )
             output_thread.start()
+            proxy_thread: threading.Thread | None = None
+            try:
+                self._wait_for_backend(self.process)
+                self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                self.server.bind(("0.0.0.0", self.config["tcp_port"]))
+                self.server.listen(self.config["max_connections"])
+                self.server.settimeout(0.5)
+                proxy_thread = threading.Thread(target=self._proxy_loop, daemon=True)
+                proxy_thread.start()
+            except OSError as exc:
+                self.log("error", f"Cannot start Modbus traffic proxy: {exc}")
+                self.set_status("error", str(exc))
+                self._interrupt()
+                try:
+                    self.process.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    self.process.kill()
+                    self.process.wait(timeout=2)
+                output_thread.join(timeout=1)
+                self.process = None
+                self.server = None
+                self.backend_port = None
+                self.restart_count += 1
+                self.stop_event.wait(3)
+                continue
             self.set_status("running", f"TCP :{self.config['tcp_port']}")
 
             while not self.stop_event.wait(0.5):
@@ -235,8 +357,18 @@ class MbusdWorker(GatewayWorker):
                     self.process.wait(timeout=2)
 
             return_code = self.process.poll()
+            if self.server:
+                try:
+                    self.server.close()
+                except OSError:
+                    pass
+                self.server = None
+            self._close_proxy_connections()
+            if proxy_thread:
+                proxy_thread.join(timeout=1)
             output_thread.join(timeout=1)
             self.process = None
+            self.backend_port = None
             if self.stop_event.is_set():
                 break
             self.restart_count += 1

@@ -22,7 +22,7 @@ serial gateways from one Web UI:
 - Saved gateways remain visible in gray when their USB is unplugged, including after app restarts. Notes and settings are retained until explicitly deleted.
 - Persistent configuration at `/mnt/user/appdata/usb-gateway/config.json`.
 - Automatic gateway recovery after Docker or Unraid restarts.
-- Live Raw gateway TX/RX byte and chunk totals in the gateway list.
+- Live TX/RX byte and chunk totals in the gateway list.
 
 USB Gateway does not modify the existing `mbusd-gateway` container or replace
 another USB management service. Do not enable the same USB device in multiple
@@ -98,10 +98,10 @@ Raw mode transfers bytes unchanged and does not parse messages, delimiters, or
 checksums. DTR and RTS are disabled by default to reduce unwanted Arduino
 resets when the serial port is opened.
 
-Raw traffic counters are kept for the lifetime of the container and survive
-gateway enable/disable or configuration edits. They reset when the container
-restarts. Modbus counters are shown as unavailable because traffic passes
-through `mbusd` and cannot be counted reliably without verbose debug logging.
+Traffic counters are kept for the lifetime of the container and survive gateway
+enable/disable or configuration edits. They reset when the container restarts.
+Raw counters measure UART bytes. Modbus counters measure Modbus TCP payload
+forwarded by the local counting proxy in front of `mbusd`.
 
 ## Development
 

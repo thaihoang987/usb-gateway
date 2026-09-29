@@ -72,7 +72,7 @@ class GatewayManager:
                     "started_at": None,
                     "restart_count": 0,
                     "client_count": 0,
-                    "metrics_available": port["mode"] == "raw",
+                    "metrics_available": True,
                     "tx_bytes": self.metrics.get(port["id"], {}).get("tx_bytes", 0),
                     "tx_count": self.metrics.get(port["id"], {}).get("tx_count", 0),
                     "rx_bytes": self.metrics.get(port["id"], {}).get("rx_bytes", 0),
