@@ -53,7 +53,7 @@ class ApiTests(unittest.TestCase):
         status, health = self.request("/api/health")
         self.assertEqual(status, 200)
         self.assertTrue(health["ok"])
-        self.assertEqual(health["version"], "0.8.0")
+        self.assertEqual(health["version"], "0.8.1")
 
         payload = {
             "name": "arduino-test",
