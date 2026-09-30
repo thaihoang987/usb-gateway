@@ -58,6 +58,8 @@ repeated Arduino auto-reset.
 - `POST /api/ports/{id}/communication` (single commands and UI-driven scans)
 - `GET /api/ports/{id}/logs`
 - `GET /api/devices`, `GET /api/health`
+- `GET /api/settings`, `PUT /api/settings` (Telegram; empty `bot_token` keeps the saved token)
+- `POST /api/settings/telegram/test`
 
 The first release is intended for a trusted LAN. Do not expose the Web UI to
 the public Internet without an authenticated reverse proxy.

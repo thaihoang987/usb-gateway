@@ -15,6 +15,7 @@ from .presets import PresetStore
 from .workers import GatewayWorker, create_worker
 from .eventlog import EventLog
 from .diagnostics import usb_diagnostics
+from .notifier import SettingsStore, TelegramNotifier, public_telegram
 
 
 class GatewayManager:
@@ -28,6 +29,9 @@ class GatewayManager:
         self.events = EventLog(store.path.with_name('events.jsonl'))
         self._monitor_stop = threading.Event()
         self._monitor_thread = None
+        self._watch_thread = None
+        self.settings = SettingsStore(store.path.with_name('settings.json'))
+        self.notifier = TelegramNotifier(self.settings, self.events.emit)
 
     def start(self) -> None:
         with self.lock:
@@ -37,6 +41,9 @@ class GatewayManager:
                 self.events.emit('info', 'Gateway manager started')
                 self._monitor_thread = threading.Thread(target=self._monitor_usb, daemon=True)
                 self._monitor_thread.start()
+                self.notifier.start()
+                self._watch_thread = threading.Thread(target=self._watch_ports, daemon=True)
+                self._watch_thread.start()
 
     def diagnostics(self):
         with self.lock:
@@ -70,10 +77,36 @@ class GatewayManager:
                     previous = message
             self._monitor_stop.wait(4)
 
+    def _watch_ports(self):
+        while not self._monitor_stop.wait(1):
+            try:
+                with self.lock:
+                    gateways = [dict(id=p['id'], name=p['name'], device=p['device'], tcp_port=p['tcp_port'],
+                                     **{k: v for k, v in self.workers[p['id']].snapshot().items() if k in ('status', 'message')})
+                                for p in self.ports if p['enabled'] and p['id'] in self.workers]
+                online = sum(1 for g in gateways if g['status'] == 'running')
+                self.notifier.observe(gateways, online, len(gateways))
+            except Exception as exc:  # keep the watcher alive
+                self.events.emit('error', f'Port watch failed: {exc}')
+
+    def get_settings(self):
+        return {'telegram': public_telegram(self.notifier.settings())}
+
+    def update_settings(self, payload):
+        telegram = payload.get('telegram')
+        if not isinstance(telegram, dict):
+            raise ConfigError('telegram settings must be an object')
+        saved = self.settings.update_telegram(telegram)
+        self.events.emit('info', f"Telegram alerts {'enabled' if saved['enabled'] else 'disabled'}")
+        return {'telegram': public_telegram(saved)}
+
     def stop(self) -> None:
         self._monitor_stop.set()
         if self._monitor_thread:
             self._monitor_thread.join(timeout=5)
+        if self._watch_thread:
+            self._watch_thread.join(timeout=5)
+        self.notifier.stop()
         with self.lock:
             workers = list(self.workers.values())
             self.workers.clear()

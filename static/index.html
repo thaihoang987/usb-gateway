@@ -55,6 +55,8 @@
     #diagnosticHints { color: var(--warn); font-size: 13px; }
     #logsStatus { font-size: 12px; color: var(--muted); }
     #logsOutput { border-radius: 5px; }
+    .settings-form { max-width: 640px; }
+    .settings-heading { margin: 0 0 4px; font-size: 15px; }
     .layout { display: grid; grid-template-columns: minmax(280px, 340px) minmax(0, 1fr); gap: 16px; align-items: start; }
     .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
     .panel-title { padding: 12px 14px; border-bottom: 1px solid var(--line); font-weight: 700; }
@@ -160,7 +162,7 @@
       <button type="button" id="refreshBtn">Refresh</button>
       <button type="button" class="primary" id="newBtn">Add gateway</button>
     </div>
-    <nav class="tabs" aria-label="Gateway views"><button id="gatewaysTab" class="primary">Gateways</button><button id="communicationTab">Communication</button><button id="logsTab">Logs</button></nav>
+    <nav class="tabs" aria-label="Gateway views"><button id="gatewaysTab" class="primary">Gateways</button><button id="communicationTab">Communication</button><button id="logsTab">Logs</button><button id="settingsTab">Settings</button></nav>
     <section id="logsPanel" class="panel" hidden>
       <div class="panel-title">Logs &amp; USB diagnostics</div>
       <div style="padding:16px">
@@ -177,6 +179,22 @@
         <pre id="logsOutput" style="max-height:420px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere" aria-label="Gateway event log"></pre>
         <details><summary>Current USB paths, mounts and diagnostic hints</summary><pre id="usbDiagnostics" style="max-height:360px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere"></pre></details>
       </div>
+    </section>
+    <section id="settingsPanel" class="panel" hidden>
+      <div class="panel-title">Settings</div>
+      <form id="telegramForm" class="settings-form" autocomplete="off">
+        <h2 class="settings-heading">Telegram alerts</h2>
+        <p class="hint">Sends a message when an enabled gateway loses its USB port (status waiting/error) and when it reconnects. Create a bot with @BotFather, send any message to the bot, then enter your chat ID.</p>
+        <div class="checks"><label><input type="checkbox" id="tgEnabled"> Enable Telegram alerts</label><label><input type="checkbox" id="tgRecovery" checked> Notify on reconnect</label></div>
+        <div class="field"><label for="tgToken">Bot token</label><input id="tgToken" type="password" placeholder="123456789:AA..." spellcheck="false"><p class="hint" id="tgTokenHint" style="margin:4px 0 0">No token saved.</p></div>
+        <div class="field"><label for="tgChat">Chat ID</label><input id="tgChat" placeholder="5388669599" spellcheck="false"></div>
+        <div class="grid2">
+          <div class="field"><label for="tgDelay">Alert after offline for (seconds)</label><input id="tgDelay" type="number" min="0" max="3600" value="10"></div>
+          <div class="field"><label for="tgTitle">Message title</label><input id="tgTitle" maxlength="64" value="USB Gateway"></div>
+        </div>
+        <p class="hint">Short drops that recover within this delay are not reported. The token is stored in /config/settings.json and is never sent back to the browser.</p>
+        <div class="form-actions"><button type="submit" class="primary" id="tgSave">Save</button><button type="button" id="tgTest">Send test message</button><button type="button" class="danger" id="tgClear">Remove token</button></div>
+      </form>
     </section>
       <section id="communicationPanel" class="panel" hidden>
         <div class="panel-title">Communication</div>
@@ -501,6 +519,7 @@
     $('closeLogBtn').addEventListener('click', () => $('logDialog').close());
     function showTab(communication) {
       $('logsPanel').hidden = true; $('logsTab').classList.remove('primary');
+      $('settingsPanel').hidden = true; $('settingsTab').classList.remove('primary');
       $('communicationPanel').hidden = !communication; $('gatewaysPanel').hidden = communication;
       $('communicationTab').classList.toggle('primary', communication); $('gatewaysTab').classList.toggle('primary', !communication);
     }
@@ -553,8 +572,37 @@
       } catch(e) { toast('Unable to download report: ' + e.message, true); }
     };
     setInterval(() => { if (!$('logsPanel').hidden && $('logsAuto').checked) refreshLogs(); }, 4000);
-    $('newBtn').addEventListener('click', () => showTab(false));
-    $('commAction').onchange = () => {
+    function renderTelegram(t) {
+      $('tgEnabled').checked = t.enabled; $('tgRecovery').checked = t.notify_recovery;
+      $('tgChat').value = t.chat_id; $('tgDelay').value = t.offline_delay_s; $('tgTitle').value = t.title;
+      $('tgToken').value = ''; $('tgToken').placeholder = t.bot_token_set ? `Saved (${t.bot_token_hint}) — leave empty to keep` : '123456789:AA...';
+      $('tgTokenHint').textContent = t.bot_token_set ? `Token saved (${t.bot_token_hint}). Type a new one only to replace it.` : 'No token saved.';
+      $('tgClear').disabled = !t.bot_token_set;
+    }
+    const telegramPayload = () => ({ enabled: $('tgEnabled').checked, notify_recovery: $('tgRecovery').checked, bot_token: $('tgToken').value.trim(),
+      chat_id: $('tgChat').value.trim(), offline_delay_s: Number($('tgDelay').value), title: $('tgTitle').value.trim() });
+    async function loadSettings() {
+      try { renderTelegram((await api('/api/settings')).telegram); } catch (e) { toast('Unable to load settings: ' + e.message, true); }
+    }
+    $('settingsTab').onclick = () => {
+      showTab(false); $('gatewaysPanel').hidden = true; $('gatewaysTab').classList.remove('primary');
+      $('settingsPanel').hidden = false; $('settingsTab').classList.add('primary'); loadSettings();
+    };
+    $('telegramForm').onsubmit = async event => {
+      event.preventDefault(); $('tgSave').disabled = true;
+      try { renderTelegram((await api('/api/settings', {method: 'PUT', body: JSON.stringify({telegram: telegramPayload()})})).telegram); alert('Telegram settings saved.'); }
+      catch (e) { alert('Not saved: ' + e.message); } finally { $('tgSave').disabled = false; }
+    };
+    $('tgTest').onclick = async () => {
+      $('tgTest').disabled = true; $('tgTest').textContent = 'Sending...';
+      try { const r = await api('/api/settings/telegram/test', {method: 'POST', body: JSON.stringify(telegramPayload())}); alert(r.ok ? 'Test message sent. Check Telegram.' : 'Telegram error: ' + r.error); }
+      catch (e) { alert('Test failed: ' + e.message); } finally { $('tgTest').disabled = false; $('tgTest').textContent = 'Send test message'; }
+    };
+    $('tgClear').onclick = async () => {
+      if (!confirm('Remove the saved bot token? Telegram alerts will be disabled.')) return;
+      try { renderTelegram((await api('/api/settings', {method: 'PUT', body: JSON.stringify({telegram: {enabled: false, clear_bot_token: true}})})).telegram); toast('Token removed'); }
+      catch (e) { toast(e.message, true); }
+    };    $('commAction').onchange = () => {
       const action = $('commAction').value;
       $('commModbus').hidden = action !== 'modbus'; $('commExtra').hidden = action !== 'modbus'; $('commSend').hidden = !['hex', 'text'].includes(action);
       $('commSendHint').hidden = action === 'listen';

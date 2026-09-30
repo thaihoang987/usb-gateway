@@ -89,6 +89,8 @@ class ApiHandler(BaseHTTPRequestHandler):
                 self._json(HTTPStatus.OK, {'logs': self.manager.events.read(
                     limit, query.get('gateway_id', [''])[0], query.get('level', [''])[0]),
                     'persistence_error': self.manager.events.persistence_error})
+            elif parts == ["api", "settings"]:
+                self._json(HTTPStatus.OK, self.manager.get_settings())
             elif parts == ["api", "diagnostics"]:
                 self._json(HTTPStatus.OK, self.manager.diagnostics())
             elif len(parts) == 4 and parts[:2] == ["api", "ports"] and parts[3] == "logs":
@@ -106,6 +108,9 @@ class ApiHandler(BaseHTTPRequestHandler):
             parts = self._parts()
             if parts == ["api", "presets"]:
                 self._json(HTTPStatus.OK, {"preset": self.manager.presets.save(self._read_json())})
+            elif parts == ["api", "settings", "telegram", "test"]:
+                error = self.manager.notifier.test(self._read_json())
+                self._json(HTTPStatus.OK, {"ok": error is None, "error": error})
             elif parts == ["api", "ports", "reorder"]:
                 payload = self._read_json()
                 ordered_ids = payload.get("ordered_ids")
@@ -137,7 +142,9 @@ class ApiHandler(BaseHTTPRequestHandler):
     def do_PUT(self) -> None:
         try:
             parts = self._parts()
-            if len(parts) == 3 and parts[:2] == ["api", "ports"]:
+            if parts == ["api", "settings"]:
+                self._json(HTTPStatus.OK, self.manager.update_settings(self._read_json()))
+            elif len(parts) == 3 and parts[:2] == ["api", "ports"]:
                 port = self.manager.update_port(parts[2], self._read_json())
                 self._json(HTTPStatus.OK, {"port": port})
             else:

@@ -105,6 +105,10 @@ enable/disable or configuration edits. They reset when the container restarts.
 Raw counters measure UART bytes. Modbus counters measure Modbus TCP payload
 forwarded by the local counting proxy in front of `mbusd`.
 
+## Telegram alerts
+
+The **Settings** tab stores a Telegram bot token and chat ID in `/config/settings.json` (file mode 600; the token is never returned to the browser). When enabled, the app sends a message when an enabled gateway stays in `waiting`/`error` longer than the configured delay (default 10 s) and another when it is `running` again, including the downtime. Drops that recover within the delay are not reported. Every alert is also written to the Logs tab. Use **Send test message** to check the token and chat ID before saving.
+
 ## Development
 
 ```bash
